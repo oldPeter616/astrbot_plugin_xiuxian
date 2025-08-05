@@ -1,5 +1,5 @@
 from astrbot.api import logger
-from astrbot.api.event import MessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 from . import data_manager, xiuxian_logic
@@ -19,8 +19,9 @@ class XiuXianPlugin(Star):
         except Exception as e:
             logger.error(f"修仙插件：数据库初始化失败，错误：{e}")
 
+    # 修改点：将 MessageEvent 修正为 AstrMessageEvent
     @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
-    async def handle_start_xiuxian(self, event: MessageEvent):
+    async def handle_start_xiuxian(self, event: AstrMessageEvent):
         """处理开始修仙的指令"""
         user_id = event.get_user_id()
         player = data_manager.get_player_by_id(user_id)
@@ -40,8 +41,9 @@ class XiuXianPlugin(Star):
         )
         await event.reply(reply_msg)
 
+    # 修改点：将 MessageEvent 修正为 AstrMessageEvent
     @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
-    async def handle_player_info(self, event: MessageEvent):
+    async def handle_player_info(self, event: AstrMessageEvent):
         """处理查看角色信息的指令"""
         user_id = event.get_user_id()
         player = data_manager.get_player_by_id(user_id)
@@ -60,8 +62,9 @@ class XiuXianPlugin(Star):
         )
         await event.reply(reply_msg)
 
+    # 修改点：将 MessageEvent 修正为 AstrMessageEvent
     @filter.command(config.CMD_CHECK_IN, "每日签到领取奖励")
-    async def handle_check_in(self, event: MessageEvent):
+    async def handle_check_in(self, event: AstrMessageEvent):
         """处理签到指令"""
         user_id = event.get_user_id()
         player = data_manager.get_player_by_id(user_id)
