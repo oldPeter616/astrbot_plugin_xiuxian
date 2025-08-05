@@ -1,0 +1,21 @@
+# 修仙插件配置文件
+# - 以#开头的行为注释，程序会忽略。
+# - 配置项格式为：KEY = VALUE (等号两边的空格会被忽略)
+
+# --- 指令设置 ---
+# 在这里修改你的机器人指令
+CMD_START_XIUXIAN = 我要修仙
+CMD_PLAYER_INFO = 我的信息
+CMD_CHECK_IN = 签到
+
+# --- 数值设置 ---
+# 新玩家的初始灵石
+INITIAL_GOLD = 100
+# 每日签到奖励的最小灵石
+CHECK_IN_REWARD_MIN = 50
+# 每日签到奖励的最大灵石
+CHECK_IN_REWARD_MAX = 200
+
+# --- 文件设置 ---
+# 数据库文件的名称
+DATABASE_FILE = xiuxian_data.db
