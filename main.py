@@ -8,8 +8,12 @@ from . import data_manager, xiuxian_logic
 from .config_manager import config
 from .models import Player
 
+# --- 装饰器定义 (已重构) ---
 def player_required(func):
-    """装饰器：检查玩家是否存在，并将player对象作为参数传递。"""
+    """
+    装饰器：检查玩家是否存在。
+    如果存在，则将 player 对象附加到 event 对象上 (event.player)。
+    """
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
         user_id = event.get_sender_id()
@@ -19,7 +23,11 @@ def player_required(func):
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
         
-        async for result in func(self, event, player, *args, **kwargs):
+        # 将 player 对象附加到 event 上下文中
+        setattr(event, 'player', player)
+        
+        # 使用原始参数调用被装饰的函数
+        async for result in func(self, event, *args, **kwargs):
             yield result
             
     return wrapper
@@ -52,7 +60,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
     @player_required
-    async def handle_player_info(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_player_info(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player # 从 event 中获取 player 对象
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
         reply_msg = (
             f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
@@ -68,7 +77,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_CHECK_IN, "每日签到领取奖励")
     @player_required
-    async def handle_check_in(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_check_in(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         success, msg, updated_player = xiuxian_logic.handle_check_in(player)
         if success:
             await data_manager.update_player(updated_player)
@@ -76,7 +86,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_START_CULTIVATION, "开始闭关修炼")
     @player_required
-    async def handle_start_cultivation(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_start_cultivation(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         success, msg, updated_player = xiuxian_logic.handle_start_cultivation(player)
         if success:
             await data_manager.update_player(updated_player)
@@ -84,7 +95,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_END_CULTIVATION, "结束闭关修炼")
     @player_required
-    async def handle_end_cultivation(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_end_cultivation(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         success, msg, updated_player = xiuxian_logic.handle_end_cultivation(player)
         if success:
             await data_manager.update_player(updated_player)
@@ -92,7 +104,8 @@ class XiuXianPlugin(Star):
     
     @filter.command(config.CMD_BREAKTHROUGH, "尝试突破当前境界")
     @player_required
-    async def handle_breakthrough(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_breakthrough(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         if player.state != "空闲":
             yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")
             return
@@ -112,7 +125,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_BACKPACK, "查看你的背包")
     @player_required
-    async def handle_backpack(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_backpack(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         inventory = await data_manager.get_inventory_by_user_id(player.user_id)
         if not inventory:
             yield event.plain_result("道友的背包空空如也。")
@@ -126,7 +140,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_BUY, "购买物品")
     @player_required
-    async def handle_buy(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_buy(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         text = event.message_str.strip()
         parts = text.split()
         if len(parts) < 2:
@@ -146,7 +161,8 @@ class XiuXianPlugin(Star):
         
     @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
     @player_required
-    async def handle_create_sect(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_create_sect(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         text = event.message_str.strip()
         parts = text.split()
         if len(parts) < 2:
@@ -161,7 +177,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_JOIN_SECT, "加入一个宗门")
     @player_required
-    async def handle_join_sect(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_join_sect(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         text = event.message_str.strip()
         parts = text.split()
         if len(parts) < 2:
@@ -176,7 +193,8 @@ class XiuXianPlugin(Star):
 
     @filter.command(config.CMD_LEAVE_SECT, "退出当前宗门")
     @player_required
-    async def handle_leave_sect(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_leave_sect(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         success, msg, updated_player = await xiuxian_logic.handle_leave_sect(player)
         if success:
             await data_manager.update_player(updated_player)
@@ -184,7 +202,8 @@ class XiuXianPlugin(Star):
         
     @filter.command(config.CMD_MY_SECT, "查看我的宗门信息")
     @player_required
-    async def handle_my_sect(self, event: AstrMessageEvent, player: Player) -> MessageEventResult:
+    async def handle_my_sect(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
         if not player.sect_id:
             yield event.plain_result("道友乃逍遥散人，尚未加入任何宗门。")
             return
