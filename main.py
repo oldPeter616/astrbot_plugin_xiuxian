@@ -8,7 +8,7 @@ from . import data_manager, xiuxian_logic
 from .config_manager import config
 
 
-@register("xiuxian", "YourName", "一个文字修仙插件", "1.0.0")
+@register("xiuxian", "oldPeter616", "一个文字修仙插件", "1.2.0")
 class XiuXianPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
