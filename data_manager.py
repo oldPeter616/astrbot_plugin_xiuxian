@@ -1,81 +1,77 @@
-# data_manager.py
-# 数据管理模块，负责所有数据库操作
+# config_manager.py
+# 负责读取和解析配置文件
 
-import sqlite3
+import json
 from pathlib import Path
-from typing import Optional
-
-# 修改点：导入 StarTools 和 logger
 from astrbot.api import logger
-from astrbot.api.star import StarTools
 
-from .config_manager import config
-from .models import Player
+class Config:
+    def __init__(self, config_file: Path, level_config_file: Path):
+        # 存放境界配置数据
+        self.level_data = []
 
-# 修改点：使用框架提供的API获取并创建数据目录
-DATA_DIR = StarTools.get_data_dir("xiuxian")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / config.DATABASE_FILE
+        # 设置默认值
+        self.CMD_START_XIUXIAN = "我要修仙"
+        self.CMD_PLAYER_INFO = "我的信息"
+        self.CMD_CHECK_IN = "签到"
+        self.CMD_START_CULTIVATION = "闭关"
+        self.CMD_END_CULTIVATION = "出关"
+        self.CMD_BREAKTHROUGH = "突破"
+        
+        self.INITIAL_GOLD = 100
+        self.CHECK_IN_REWARD_MIN = 50
+        self.CHECK_IN_REWARD_MAX = 200
+        self.BASE_EXP_PER_MINUTE = 10
+        self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
+        
+        self.DATABASE_FILE = "xiuxian_data.db"
+        
+        self._load_config(config_file)
+        self._load_level_config(level_config_file)
 
-logger.info(f"修仙插件数据将存储在: {DB_PATH}")
+    def _load_level_config(self, level_config_file: Path):
+        if not level_config_file.exists():
+            logger.error(f"境界配置文件 {level_config_file} 不存在！请创建它。")
+            return
+        
+        try:
+            with open(level_config_file, 'r', encoding='utf-8') as f:
+                self.level_data = json.load(f)
+            logger.info(f"成功加载 {len(self.level_data)} 条境界配置。")
+        except Exception as e:
+            logger.error(f"加载境界配置文件 {level_config_file} 失败: {e}")
 
-def init_database():
-    """初始化数据库，如果表不存在则创建。"""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS players (
-                user_id TEXT PRIMARY KEY,
-                level TEXT NOT NULL,
-                spiritual_root TEXT NOT NULL,
-                experience INTEGER NOT NULL,
-                gold INTEGER NOT NULL,
-                last_check_in REAL NOT NULL
-            )
-        """)
-        conn.commit()
+    def _load_config(self, config_file: Path):
+        if not config_file.exists():
+            logger.warning(f"配置文件 {config_file} 不存在，将使用默认设置。")
+            return
 
-# ... (get_player_by_id, create_player, update_player 函数保持不变)
-def get_player_by_id(user_id: str) -> Optional[Player]:
-    """通过用户ID获取玩家数据"""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM players WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        return Player(**dict(row)) if row else None
+        with open(config_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                parts = line.split('=', 1)
+                if len(parts) != 2:
+                    continue
+                
+                key = parts[0].strip()
+                value = parts[1].strip()
+                
+                # 尝试转换为数字（整数或浮点数）
+                try:
+                    if '.' in value:
+                        setattr(self, key, float(value))
+                    else:
+                        setattr(self, key, int(value))
+                except ValueError:
+                    setattr(self, key, value)
 
-def create_player(player: Player):
-    """创建新玩家"""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO players (user_id, level, spiritual_root, experience, gold, last_check_in)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            player.user_id,
-            player.level,
-            player.spiritual_root,
-            player.experience,
-            player.gold,
-            player.last_check_in
-        ))
-        conn.commit()
+# 路径定义
+_current_dir = Path(__file__).parent
+CONFIG_PATH = _current_dir / "config.txt"
+LEVEL_CONFIG_PATH = _current_dir / "level_config.json"
 
-def update_player(player: Player):
-    """更新玩家数据"""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE players
-            SET level = ?, spiritual_root = ?, experience = ?, gold = ?, last_check_in = ?
-            WHERE user_id = ?
-        """, (
-            player.level,
-            player.spiritual_root,
-            player.experience,
-            player.gold,
-            player.last_check_in,
-            player.user_id
-        ))
-        conn.commit()
+# 实例化
+config = Config(CONFIG_PATH, LEVEL_CONFIG_PATH)

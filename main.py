@@ -22,8 +22,6 @@ class XiuXianPlugin(Star):
     @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
         """处理开始修仙的指令"""
-        # --- 最终修复点 (根据官方文档) ---
-        # 获取用户ID的正确方式是 event.sender.id
         user_id = event.sender.id
         player = data_manager.get_player_by_id(user_id)
 
@@ -34,8 +32,6 @@ class XiuXianPlugin(Star):
         new_player = xiuxian_logic.generate_new_player_stats(user_id)
         data_manager.create_player(new_player)
 
-        # --- 最终修复点 (根据官方文档) ---
-        # 获取用户昵称的正确方式是 event.sender.name
         reply_msg = (
             f"恭喜道友 {event.sender.name} 踏上仙途！\n"
             f"你的初始灵根为：【{new_player.spiritual_root}】\n"
@@ -47,7 +43,6 @@ class XiuXianPlugin(Star):
     @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
     async def handle_player_info(self, event: AstrMessageEvent):
         """处理查看角色信息的指令"""
-        # --- 最终修复点 (根据官方文档) ---
         user_id = event.sender.id
         player = data_manager.get_player_by_id(user_id)
 
@@ -55,13 +50,13 @@ class XiuXianPlugin(Star):
             await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
 
-        # --- 最终修复点 (根据官方文档) ---
         reply_msg = (
             f"--- 道友 {event.sender.name} 的信息 ---\n"
             f"境界：{player.level}\n"
             f"灵根：{player.spiritual_root}\n"
             f"修为：{player.experience}\n"
             f"灵石：{player.gold}\n"
+            f"状态：{player.state}\n"
             f"--------------------------"
         )
         await event.reply(reply_msg)
@@ -69,7 +64,6 @@ class XiuXianPlugin(Star):
     @filter.command(config.CMD_CHECK_IN, "每日签到领取奖励")
     async def handle_check_in(self, event: AstrMessageEvent):
         """处理签到指令"""
-        # --- 最终修复点 (根据官方文档) ---
         user_id = event.sender.id
         player = data_manager.get_player_by_id(user_id)
 
@@ -82,6 +76,62 @@ class XiuXianPlugin(Star):
         if success:
             data_manager.update_player(updated_player)
 
+        await event.reply(msg)
+
+    @filter.command(config.CMD_START_CULTIVATION, "开始闭关修炼")
+    async def handle_start_cultivation(self, event: AstrMessageEvent):
+        """处理闭关指令"""
+        user_id = event.sender.id
+        player = data_manager.get_player_by_id(user_id)
+
+        if not player:
+            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            return
+
+        success, msg, updated_player = xiuxian_logic.handle_start_cultivation(player)
+
+        if success:
+            data_manager.update_player(updated_player)
+        
+        await event.reply(msg)
+
+    @filter.command(config.CMD_END_CULTIVATION, "结束闭关修炼")
+    async def handle_end_cultivation(self, event: AstrMessageEvent):
+        """处理出关指令"""
+        user_id = event.sender.id
+        player = data_manager.get_player_by_id(user_id)
+
+        if not player:
+            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            return
+            
+        success, msg, updated_player = xiuxian_logic.handle_end_cultivation(player)
+
+        if success:
+            data_manager.update_player(updated_player)
+            
+        await event.reply(msg)
+    
+    @filter.command(config.CMD_BREAKTHROUGH, "尝试突破当前境界")
+    async def handle_breakthrough(self, event: AstrMessageEvent):
+        """处理突破指令"""
+        user_id = event.sender.id
+        player = data_manager.get_player_by_id(user_id)
+
+        if not player:
+            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            return
+        
+        if player.state != "空闲":
+            await event.reply(f"道友当前正在「{player.state}」中，心有旁骛，无法尝试突破。")
+            return
+            
+        success, msg, updated_player = xiuxian_logic.handle_breakthrough(player)
+
+        # 只要不是因为修为不足等原因被逻辑层驳回，就更新数据
+        if success:
+            data_manager.update_player(updated_player)
+            
         await event.reply(msg)
 
     async def terminate(self):

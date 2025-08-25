@@ -1,0 +1,42 @@
+[
+    {
+        "level_name": "炼气一层",
+        "exp_needed": 0,
+        "success_rate": 1.0
+    },
+    {
+        "level_name": "炼气二层",
+        "exp_needed": 1000,
+        "success_rate": 1.0
+    },
+    {
+        "level_name": "炼气三层",
+        "exp_needed": 2500,
+        "success_rate": 0.95
+    },
+    {
+        "level_name": "炼气四层",
+        "exp_needed": 5000,
+        "success_rate": 0.9
+    },
+    {
+        "level_name": "炼气五层",
+        "exp_needed": 8000,
+        "success_rate": 0.8
+    },
+    {
+        "level_name": "筑基初期",
+        "exp_needed": 15000,
+        "success_rate": 0.6
+    },
+    {
+        "level_name": "筑基中期",
+        "exp_needed": 30000,
+        "success_rate": 0.5
+    },
+    {
+        "level_name": "筑基后期",
+        "exp_needed": 50000,
+        "success_rate": 0.4
+    }
+]
