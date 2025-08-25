@@ -10,6 +10,14 @@ CMD_CHECK_IN = 签到
 CMD_START_CULTIVATION = 闭关
 CMD_END_CULTIVATION = 出关
 CMD_BREAKTHROUGH = 突破
+CMD_SHOP = 商店
+CMD_BUY = 购买
+CMD_BACKPACK = 我的背包
+CMD_CREATE_SECT = 创建宗门
+CMD_JOIN_SECT = 加入宗门
+CMD_MY_SECT = 我的宗门
+CMD_LEAVE_SECT = 退出宗门
+CMD_HELP = 修仙帮助
 
 # --- 数值设置 ---
 # 新玩家的初始灵石
@@ -22,6 +30,8 @@ CHECK_IN_REWARD_MAX = 200
 BASE_EXP_PER_MINUTE = 10
 # 突破失败时，扣除所需修为的惩罚比例 (0.1 = 10%)
 BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
+# 创建宗门所需灵石
+CREATE_SECT_COST = 5000
 
 
 # --- 文件设置 ---
