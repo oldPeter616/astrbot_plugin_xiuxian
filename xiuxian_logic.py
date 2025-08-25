@@ -9,7 +9,7 @@ from .config_manager import config
 from .models import Player
 from . import data_manager
 
-# ... (Previous functions remain unchanged)
+# ... (其他同步函数保持不变)
 POSSIBLE_SPIRITUAL_ROOTS = ["金", "木", "水", "火", "土", "天", "异"]
 
 def generate_new_player_stats(user_id: str) -> Player:
@@ -72,19 +72,15 @@ def handle_end_cultivation(player: Player) -> Tuple[bool, str, Player]:
     return True, msg, player
 
 def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
-    """处理突破逻辑"""
-    current_level_info = None
-    current_level_index = -1
-    for i, level in enumerate(config.level_data):
-        if level['level_name'] == player.level:
-            current_level_info = level
-            current_level_index = i
-            break
+    """处理突破逻辑 (已优化)"""
+    current_level_info = config.level_map.get(player.level)
     
     if current_level_info is None:
         return False, "发生未知错误：无法找到道友当前的境界信息。", player
 
-    if current_level_index == len(config.level_data) - 1:
+    current_level_index = current_level_info['index']
+    
+    if current_level_index >= len(config.level_data) - 1:
         return False, "道友已臻化境，达到当前世界的顶峰，无法再进行突破！", player
         
     next_level_info = config.level_data[current_level_index + 1]
@@ -95,7 +91,7 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
         msg = (
             f"突破失败！\n"
             f"目标境界：{next_level_info['level_name']}\n"
-            f"所需修为：{exp_needed} (道友当前拥有 {player.experience})\n"
+            f"所需修为：{exp_needed} (当前拥有 {player.experience})\n"
             f"修为不足，请继续潜心修炼。"
         )
         return False, msg, player
@@ -116,17 +112,14 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
             f"境界稳固在【{player.level}】，但修为空耗 {punishment} 点。\n"
             f"请重整旗鼓，再次尝试！"
         )
-        
     return True, msg, player
-
+    
 def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool, str, Optional[Player], Optional[str]]:
     """处理购买物品逻辑"""
-    target_item_id = None
-    target_item_info = None
+    target_item_id, target_item_info = None, None
     for item_id, info in config.item_data.items():
         if info['name'] == item_name:
-            target_item_id = item_id
-            target_item_info = info
+            target_item_id, target_item_info = item_id, info
             break
             
     if not target_item_info:
@@ -134,20 +127,20 @@ def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool
 
     total_cost = target_item_info['price'] * quantity
     if player.gold < total_cost:
-        return False, f"道友的灵石不足！购买 {quantity} 个「{item_name}」需要 {total_cost} 灵石，而你只有 {player.gold}。 ", None, None
+        return False, f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。", None, None
 
     player.gold -= total_cost
-    msg = f"购买成功！道友花费 {total_cost} 灵石，购得「{item_name}」x{quantity}。"
-    
+    msg = f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。"
     return True, msg, player, target_item_id
 
-# --- 新增的宗门逻辑函数 ---
-def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
+# --- 宗门逻辑函数 (异步重构) ---
+
+async def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
     """处理创建宗门逻辑"""
     if player.sect_id is not None:
         return False, f"道友已是「{player.sect_name}」的成员，无法另立门户。", None
     
-    if data_manager.get_sect_by_name(sect_name):
+    if await data_manager.get_sect_by_name(sect_name):
         return False, f"「{sect_name}」之名已响彻修仙界，请道友另择佳名。", None
 
     cost = config.CREATE_SECT_COST
@@ -155,19 +148,19 @@ def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optio
         return False, f"开宗立派非同小可，需消耗 {cost} 灵石，道友的家底还不够。", None
 
     player.gold -= cost
-    sect_id = data_manager.create_sect(sect_name, player.user_id)
+    sect_id = await data_manager.create_sect(sect_name, player.user_id)
     player.sect_id = sect_id
     player.sect_name = sect_name
     
     msg = f"恭喜道友！「{sect_name}」今日正式成立，广纳门徒，共图大道！"
     return True, msg, player
 
-def handle_join_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
+async def handle_join_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
     """处理加入宗门逻辑"""
     if player.sect_id is not None:
         return False, f"道友已是「{player.sect_name}」的成员，不可三心二意。", None
         
-    sect = data_manager.get_sect_by_name(sect_name)
+    sect = await data_manager.get_sect_by_name(sect_name)
     if not sect:
         return False, f"寻遍天下，也未曾听闻「{sect_name}」之名，请道友核实。", None
         
@@ -177,12 +170,12 @@ def handle_join_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optiona
     msg = f"道友已成功拜入「{sect_name}」，从此同门齐心，共觅仙缘！"
     return True, msg, player
 
-def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]]:
+async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]]:
     """处理退出宗门逻辑"""
     if player.sect_id is None:
         return False, "道友本是逍遥散人，何谈退出宗门？", None
     
-    sect = data_manager.get_sect_by_id(player.sect_id)
+    sect = await data_manager.get_sect_by_id(player.sect_id)
     if sect and sect['leader_id'] == player.user_id:
         return False, "道友身为一宗之主，身系宗门兴衰，不可轻易脱离！请先传位于他人。", None
         
