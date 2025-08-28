@@ -3,7 +3,7 @@
 
 import random
 import time
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional
 
 from .config_manager import config
 from .models import Player
@@ -141,25 +141,35 @@ def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool
     msg = f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。"
     return True, msg, player, target_item_id
 
-async def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
-    """处理物品使用逻辑"""
+def _effect_add_experience(player: Player, value: int) -> str:
+    player.experience += value
+    return f"修为增加了 {value} 点！"
+
+def _effect_add_gold(player: Player, value: int) -> str:
+    player.gold += value
+    return f"灵石增加了 {value} 点！"
+
+ITEM_EFFECT_HANDLERS = {
+    "add_experience": _effect_add_experience,
+    "add_gold": _effect_add_gold,
+}
+
+def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
+    """处理物品使用逻辑 (同步函数，策略模式)"""
     item_info = config.item_data.get(item_id)
-    if not item_info:
-        return False, "错误的物品信息。", None
-        
-    effect = item_info.get("effect")
-    if not effect:
-        return False, f"【{item_info['name']}】似乎只是凡物，无法使用。", None
+    if not item_info or not (effect := item_info.get("effect")):
+        return False, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。", None
 
     effect_type = effect.get("type")
-    value = effect.get("value", 0) * quantity
-    
-    if effect_type == "add_experience":
-        player.experience += value
-        msg = f"你使用了 {quantity} 个【{item_info['name']}】，修为增加了 {value} 点！"
-        return True, msg, player
-    else:
+    handler = ITEM_EFFECT_HANDLERS.get(effect_type)
+
+    if not handler:
         return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", None
+
+    value = effect.get("value", 0) * quantity
+    result_msg = handler(player, value)
+    msg = f"你使用了 {quantity} 个【{item_info['name']}】，{result_msg}"
+    return True, msg, player
 
 async def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
     """处理创建宗门逻辑"""
@@ -217,7 +227,7 @@ async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, List[Play
     original_attacker_hp = attacker.hp
     original_defender_hp = defender.hp
 
-    winner, loser, combat_log = combat_manager.player_vs_player(attacker, defender)
+    winner, loser, combat_log = await combat_manager.player_vs_player(attacker, defender)
     
     attacker.hp = original_attacker_hp
     defender.hp = original_defender_hp

@@ -3,7 +3,6 @@
 
 import asyncio
 import random
-import time
 from typing import Dict, List, Optional, Tuple
 from .models import Player, Boss, Monster
 from . import data_manager
@@ -16,7 +15,7 @@ class BattleSession:
         self.participants: Dict[str, Player] = {}
         self.last_attack_time: Dict[str, float] = {}
         self.total_damage: Dict[str, int] = {}
-        self.start_time = time.time()
+        self.start_time = asyncio.get_running_loop().time()
         self.lock = asyncio.Lock()
         self.log: List[str] = [f"远古妖兽【{boss.name}】出现在了修仙界！"]
         self.player_attack_count = 0
@@ -29,10 +28,11 @@ class BattleManager:
 
     def is_boss_on_cooldown(self, boss_id: str) -> Tuple[bool, float]:
         """检查Boss是否在冷却中"""
+        loop = asyncio.get_running_loop()
+        current_time = loop.time()
         cooldown_end_time = self.boss_cooldowns.get(boss_id)
-        if cooldown_end_time and time.time() < cooldown_end_time:
-            remaining_seconds = cooldown_end_time - time.time()
-            return True, remaining_seconds
+        if cooldown_end_time and current_time < cooldown_end_time:
+            return True, cooldown_end_time - current_time
         return False, 0
 
     async def start_battle(self, boss_config: dict) -> Tuple[bool, str]:
@@ -72,34 +72,36 @@ class BattleManager:
             self.current_battle.log.append(f"【{player.user_id[-4:]}】加入了战场！")
             return True, f"你已成功加入对【{self.current_battle.boss.name}】的讨伐！"
 
-    async def player_attack(self, player: Player) -> Tuple[bool, str, List[Player]]:
-        """处理玩家攻击世界Boss"""
+    async def player_attack(self, player: Player) -> Tuple[bool, str, bool, List[Player]]:
+        """处理玩家攻击世界Boss, 返回 (是否成功, 消息, 战斗是否结束, 需更新的玩家)"""
         if not self.current_battle:
-            return False, "当前没有战斗。", []
+            return False, "当前没有战斗。", False, []
             
         async with self.current_battle.lock:
             if player.user_id not in self.current_battle.participants:
-                return False, "你尚未加入战斗，无法攻击！", []
+                return False, "你尚未加入战斗，无法攻击！", False, []
 
             p = self.current_battle.participants[player.user_id]
             if p.hp <= 0:
-                return False, "你已经倒下了，无法行动！", []
+                return False, "你已经倒下了，无法行动！", False, []
 
             damage = max(1, p.attack - self.current_battle.boss.defense)
             self.current_battle.boss.hp -= damage
-            self.current_battle.log.append(f"【{p.user_id[-4:]}】奋力一击，对Boss造成了 {damage} 点伤害！")
+            log_msg = f"【{p.user_id[-4:]}】奋力一击，对Boss造成了 {damage} 点伤害！"
+            self.current_battle.log.append(log_msg)
             
             self.current_battle.total_damage[p.user_id] = self.current_battle.total_damage.get(p.user_id, 0) + damage
             
             if self.current_battle.boss.hp <= 0:
-                return await self._end_battle(victory=True)
+                battle_over, final_msg, updated_players = await self._end_battle(victory=True)
+                return True, final_msg, battle_over, updated_players
 
             self.current_battle.player_attack_count += 1
             if self.current_battle.player_attack_count % 3 == 0:
                 self.current_battle.log.append(f"【{self.current_battle.boss.name}】被激怒了，发动了猛烈的反击！")
                 await self._boss_attack()
             
-            return True, self.current_battle.log[-1], list(self.current_battle.participants.values())
+            return True, log_msg, False, list(self.current_battle.participants.values())
 
     async def _boss_attack(self):
         """Boss攻击所有参战玩家"""
@@ -127,13 +129,21 @@ class BattleManager:
         
         if victory:
             boss = self.current_battle.boss
-            final_log = f"恭喜各位道友！经过一番苦战，【{boss.name}】已被成功讨伐！\n---战利品分配---"
+            final_log = f"恭喜各位道友！成功讨伐【{boss.name}】！\n---战利品分配---"
             
+            total_damage_dealt = sum(self.current_battle.total_damage.values())
+            if total_damage_dealt == 0: total_damage_dealt = 1
+
             for user_id, player in self.current_battle.participants.items():
-                reward_log = f"\n【{user_id[-4:]}】:"
-                player.gold += boss.rewards['gold']
-                player.experience += boss.rewards['experience']
-                reward_log += f" 灵石+{boss.rewards['gold']}, 修为+{boss.rewards['experience']}"
+                damage_contribution = self.current_battle.total_damage.get(user_id, 0) / total_damage_dealt
+                
+                gold_reward = int(boss.rewards['gold'] * damage_contribution)
+                exp_reward = int(boss.rewards['experience'] * damage_contribution)
+                
+                player.gold += gold_reward
+                player.experience += exp_reward
+                reward_log = f"\n【{user_id[-4:]}】(贡献度 {damage_contribution:.1%}):"
+                reward_log += f" 灵石+{gold_reward}, 修为+{exp_reward}"
                 
                 for item_id, drop_rate in boss.rewards['items'].items():
                     if random.random() < drop_rate:
@@ -144,9 +154,10 @@ class BattleManager:
                 final_log += reward_log
                 updated_players.append(player)
 
-            self.boss_cooldowns[boss.id] = time.time() + boss.cooldown_minutes * 60
+            loop = asyncio.get_running_loop()
+            self.boss_cooldowns[boss.id] = loop.time() + boss.cooldown_minutes * 60
         else:
-            final_log = f"很遗憾，【{self.current_battle.boss.name}】的力量过于强大，讨伐失败了。"
+            final_log = f"很遗憾，讨伐【{self.current_battle.boss.name}】失败了。"
             updated_players = list(self.current_battle.participants.values())
             
         self.current_battle = None
@@ -173,8 +184,8 @@ class BattleManager:
             status += f" - 【{player.user_id[-4:]}】 ❤️{player.hp}/{player.max_hp} | ⚔️输出: {damage}\n"
         return status
 
-def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
-    """处理玩家切磋的逻辑"""
+async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
+    """处理玩家切磋的逻辑 (异步化)"""
     combat_log = [f"⚔️【切磋开始】{attacker.user_id[-4:]} vs {defender.user_id[-4:]}！"]
     p1_hp, p2_hp = attacker.hp, defender.hp
     turn = 1
@@ -191,6 +202,8 @@ def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Playe
             combat_log.append(f"\n🏆【切磋结束】{attacker.user_id[-4:]} 获胜！")
             return attacker, defender, combat_log
 
+        await asyncio.sleep(0) # 让出CPU
+
         damage_to_p1 = max(1, defender.attack - attacker.defense)
         p1_hp -= damage_to_p1
         combat_log.append(f"{defender.user_id[-4:]} 对 {attacker.user_id[-4:]} 造成了 {damage_to_p1} 点伤害。")
@@ -201,14 +214,15 @@ def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Playe
             return defender, attacker, combat_log
             
         turn += 1
+        await asyncio.sleep(0) # 让出CPU
 
     if turn > max_turns:
         combat_log.append("\n【平局】双方大战三十回合，未分胜负！")
     
     return None, None, combat_log
 
-def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str]]:
-    """处理玩家 vs 普通怪物的战斗"""
+async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str]]:
+    """处理玩家 vs 普通怪物的战斗 (异步化)"""
     log = [f"你遭遇了【{monster.name}】！"]
     player_hp, monster_hp = player.hp, monster.hp
 
@@ -222,13 +236,15 @@ def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str]
             player.hp = player_hp
             return True, log
 
+        await asyncio.sleep(0)
+
         damage_to_player = max(1, monster.attack - player.defense)
         player_hp -= damage_to_player
         log.append(f"【{monster.name}】对你造成了 {damage_to_player} 点伤害。")
 
     if player_hp <= 0:
         log.append("你不敌对手，重伤倒地...")
-        player.hp = 1 # 战斗失败HP变为1
+        player.hp = 1
         return False, log
     
     return False, log

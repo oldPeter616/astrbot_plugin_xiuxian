@@ -355,16 +355,19 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_attack_boss(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        success, msg, updated_players = await self.battle_manager.player_attack(player)
+        # 返回值变为元组，包含更明确的状态
+        success, msg, battle_over, updated_players = await self.battle_manager.player_attack(player)
         
-        if "讨伐" in msg:
-            yield event.plain_result(msg)
+        yield event.plain_result(msg)
+        
+        if battle_over:
+            # 战斗结束，更新所有参与者
             for p in updated_players:
                 await data_manager.update_player(p)
-        else:
-            yield event.plain_result(msg)
+        elif success:
+            # 普通攻击，只更新被反击的玩家
             for p in updated_players:
-                if p.hp != p.max_hp:
+                 if p.hp < p.max_hp: 
                     await data_manager.update_player(p)
     
     @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")

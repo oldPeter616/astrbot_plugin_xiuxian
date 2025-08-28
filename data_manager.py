@@ -15,49 +15,44 @@ DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-# --- 数据库版本控制 ---
-LATEST_DB_VERSION = 2 # 定义当前代码期望的最新数据库版本
+LATEST_DB_VERSION = 3
 
-# --- 连接池核心 ---
-_db_pool: Optional[aiosqlite.Connection] = None
+# --- 连接核心 (重命名) ---
+_db_connection: Optional[aiosqlite.Connection] = None
 
 async def init_db_pool():
-    """初始化数据库连接池，并执行数据库迁移"""
-    global _db_pool
-    if _db_pool is None:
-        _db_pool = await aiosqlite.connect(DB_PATH)
+    """初始化数据库连接，并执行数据库迁移"""
+    global _db_connection
+    if _db_connection is None:
+        _db_connection = await aiosqlite.connect(DB_PATH)
+        _db_connection.row_factory = aiosqlite.Row # 一次性设置
         logger.info(f"数据库连接已创建: {DB_PATH}")
-        await migrate_database() # 在初始化时执行迁移
+        await migrate_database()
 
 async def close_db_pool():
     """关闭数据库连接"""
-    global _db_pool
-    if _db_pool:
-        await _db_pool.close()
-        _db_pool = None
+    global _db_connection
+    if _db_connection:
+        await _db_connection.close()
+        _db_connection = None
         logger.info("数据库连接已关闭。")
-
-# --- 数据库迁移核心功能 ---
 
 async def migrate_database():
     """检查并执行数据库迁移"""
-    async with _db_pool.execute("PRAGMA foreign_keys = ON"):
+    async with _db_connection.execute("PRAGMA foreign_keys = ON"):
         pass
 
-    # 检查版本表是否存在
-    async with _db_pool.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
+    async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
-            # 全新安装
             logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v2()
-            await _db_pool.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
-            await _db_pool.commit()
+            await _create_all_tables_v3()
+            await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
+            await _db_connection.commit()
             logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
             return
 
-    # 获取当前版本
     current_version = 0
-    async with _db_pool.execute("SELECT version FROM db_info") as cursor:
+    async with _db_connection.execute("SELECT version FROM db_info") as cursor:
         row = await cursor.fetchone()
         if row:
             current_version = row[0]
@@ -68,35 +63,35 @@ async def migrate_database():
         logger.info("检测到数据库需要升级...")
         if current_version < 2:
             await _upgrade_v1_to_v2()
-        # --- 未来在这里添加更多的版本升级 ---
-        # if current_version < 3:
-        #     await _upgrade_v2_to_v3()
+            current_version = 2
+        if current_version < 3:
+            await _upgrade_v2_to_v3()
         
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")
 
-async def _create_all_tables_v2():
-    """创建版本2最新的所有表结构"""
-    await _db_pool.execute("""
-        CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)
-    """)
-    await _db_pool.execute("""
+async def _create_all_tables_v3():
+    """创建版本3（最新）的所有表结构"""
+    await _db_connection.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
+    await _db_connection.execute("""
         CREATE TABLE IF NOT EXISTS sects (
             id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
             leader_id TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
             funds INTEGER NOT NULL DEFAULT 0
         )
     """)
-    await _db_pool.execute("""
+    await _db_connection.execute("""
         CREATE TABLE IF NOT EXISTS players (
             user_id TEXT PRIMARY KEY, level TEXT NOT NULL, spiritual_root TEXT NOT NULL,
             experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
             state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER,
-            sect_name TEXT, FOREIGN KEY (sect_id) REFERENCES sects (id)
+            sect_name TEXT, hp INTEGER NOT NULL, max_hp INTEGER NOT NULL,
+            attack INTEGER NOT NULL, defense INTEGER NOT NULL,
+            FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
-    await _db_pool.execute("""
+    await _db_connection.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
             item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
@@ -104,17 +99,14 @@ async def _create_all_tables_v2():
             UNIQUE(user_id, item_id)
         )
     """)
-    await _db_pool.commit()
+    await _db_connection.commit()
 
 async def _upgrade_v1_to_v2():
     """从版本1升级到版本2的迁移逻辑"""
     logger.info("正在执行数据库升级: v1 -> v2 ...")
     try:
-        # 1. 重命名旧的 inventory 表
-        await _db_pool.execute("ALTER TABLE inventory RENAME TO inventory_old")
-
-        # 2. 创建新的、带 UNIQUE 约束的 inventory 表
-        await _db_pool.execute("""
+        await _db_connection.execute("ALTER TABLE inventory RENAME TO inventory_old")
+        await _db_connection.execute("""
             CREATE TABLE inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
                 item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
@@ -122,87 +114,128 @@ async def _upgrade_v1_to_v2():
                 UNIQUE(user_id, item_id)
             )
         """)
-
-        # 3. 将旧表数据迁移到新表
-        await _db_pool.execute("""
+        await _db_connection.execute("""
             INSERT INTO inventory (user_id, item_id, quantity)
             SELECT user_id, item_id, quantity FROM inventory_old
         """)
-
-        # 4. 删除旧表
-        await _db_pool.execute("DROP TABLE inventory_old")
-        
-        # 5. 更新版本号
-        await _db_pool.execute("UPDATE db_info SET version = 2")
-        await _db_pool.commit()
+        await _db_connection.execute("DROP TABLE inventory_old")
+        await _db_connection.execute("UPDATE db_info SET version = 2")
+        await _db_connection.commit()
         logger.info("v1 -> v2 升级成功！")
     except Exception as e:
-        await _db_pool.rollback()
+        await _db_connection.rollback()
         logger.error(f"数据库 v1 -> v2 升级失败，已回滚: {e}")
         raise
 
-# --- 以下是数据操作函数 ---
+async def _upgrade_v2_to_v3():
+    """从版本2升级到版本3的迁移逻辑"""
+    logger.info("正在执行数据库升级: v2 -> v3 ...")
+    try:
+        await _db_connection.execute("ALTER TABLE players ADD COLUMN hp INTEGER NOT NULL DEFAULT 100")
+        await _db_connection.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 100")
+        await _db_connection.execute("ALTER TABLE players ADD COLUMN attack INTEGER NOT NULL DEFAULT 10")
+        await _db_connection.execute("ALTER TABLE players ADD COLUMN defense INTEGER NOT NULL DEFAULT 5")
+        
+        await _db_connection.execute("UPDATE db_info SET version = 3")
+        await _db_connection.commit()
+        logger.info("v2 -> v3 升级成功！")
+    except Exception as e:
+        if "duplicate column name" in str(e):
+            logger.warning("战斗属性列已存在，跳过添加。")
+            await _db_connection.execute("UPDATE db_info SET version = 3")
+            await _db_connection.commit()
+        else:
+            await _db_connection.rollback()
+            logger.error(f"数据库 v2 -> v3 升级失败，已回滚: {e}")
+            raise
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
+    """通过用户ID获取玩家数据 (已加固)"""
+    async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
         row = await cursor.fetchone()
-        return Player(**dict(row)) if row else None
+        if not row:
+            return None
+        player_data = dict(row)
+        return Player(
+            user_id=player_data.get('user_id'),
+            level=player_data.get('level', '炼气一层'),
+            spiritual_root=player_data.get('spiritual_root', '未知'),
+            experience=player_data.get('experience', 0),
+            gold=player_data.get('gold', 0),
+            last_check_in=player_data.get('last_check_in', 0.0),
+            state=player_data.get('state', '空闲'),
+            state_start_time=player_data.get('state_start_time', 0.0),
+            sect_id=player_data.get('sect_id'),
+            sect_name=player_data.get('sect_name'),
+            hp=player_data.get('hp', 100),
+            max_hp=player_data.get('max_hp', 100),
+            attack=player_data.get('attack', 10),
+            defense=player_data.get('defense', 5)
+        )
 
 async def create_player(player: Player):
-    await _db_pool.execute("""
-        INSERT INTO players (user_id, level, spiritual_root, experience, gold, last_check_in, state, state_start_time, sect_id, sect_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """创建新玩家"""
+    await _db_connection.execute("""
+        INSERT INTO players (user_id, level, spiritual_root, experience, gold, 
+                             last_check_in, state, state_start_time, sect_id, 
+                             sect_name, hp, max_hp, attack, defense)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         player.user_id, player.level, player.spiritual_root, player.experience,
         player.gold, player.last_check_in, player.state, player.state_start_time,
-        player.sect_id, player.sect_name
+        player.sect_id, player.sect_name, player.hp, player.max_hp,
+        player.attack, player.defense
     ))
-    await _db_pool.commit()
+    await _db_connection.commit()
 
 async def update_player(player: Player):
-    await _db_pool.execute("""
+    """更新玩家数据"""
+    await _db_connection.execute("""
         UPDATE players
         SET level = ?, spiritual_root = ?, experience = ?, gold = ?, last_check_in = ?, 
-            state = ?, state_start_time = ?, sect_id = ?, sect_name = ?
+            state = ?, state_start_time = ?, sect_id = ?, sect_name = ?,
+            hp = ?, max_hp = ?, attack = ?, defense = ?
         WHERE user_id = ?
     """, (
         player.level, player.spiritual_root, player.experience, player.gold,
         player.last_check_in, player.state, player.state_start_time,
-        player.sect_id, player.sect_name, player.user_id
+        player.sect_id, player.sect_name, player.hp, player.max_hp,
+        player.attack, player.defense, player.user_id
     ))
-    await _db_pool.commit()
+    await _db_connection.commit()
 
 async def create_sect(sect_name: str, leader_id: str) -> int:
-    async with _db_pool.execute("INSERT INTO sects (name, leader_id) VALUES (?, ?)", (sect_name, leader_id)) as cursor:
-        await _db_pool.commit()
+    """创建新宗门并返回宗门ID"""
+    async with _db_connection.execute("INSERT INTO sects (name, leader_id) VALUES (?, ?)", (sect_name, leader_id)) as cursor:
+        await _db_connection.commit()
         return cursor.lastrowid
 
 async def get_sect_by_name(sect_name: str) -> Optional[Dict[str, Any]]:
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT * FROM sects WHERE name = ?", (sect_name,)) as cursor:
+    """根据名称查找宗门"""
+    async with _db_connection.execute("SELECT * FROM sects WHERE name = ?", (sect_name,)) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def get_sect_by_id(sect_id: int) -> Optional[Dict[str, Any]]:
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT * FROM sects WHERE id = ?", (sect_id,)) as cursor:
+    """根据ID查找宗门"""
+    async with _db_connection.execute("SELECT * FROM sects WHERE id = ?", (sect_id,)) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def get_sect_members(sect_id: int) -> List[Player]:
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT * FROM players WHERE sect_id = ?", (sect_id,)) as cursor:
+    """获取宗门所有成员 (已优化)"""
+    async with _db_connection.execute("SELECT * FROM players WHERE sect_id = ?", (sect_id,)) as cursor:
         rows = await cursor.fetchall()
         return [Player(**dict(row)) for row in rows]
 
 async def update_player_sect(user_id: str, sect_id: Optional[int], sect_name: Optional[str]):
-    await _db_pool.execute("UPDATE players SET sect_id = ?, sect_name = ? WHERE user_id = ?", (sect_id, sect_name, user_id))
-    await _db_pool.commit()
+    """更新玩家的宗门信息"""
+    await _db_connection.execute("UPDATE players SET sect_id = ?, sect_name = ? WHERE user_id = ?", (sect_id, sect_name, user_id))
+    await _db_connection.commit()
 
 async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
+    """获取指定用户的背包物品列表"""
+    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
         rows = await cursor.fetchall()
         inventory_list = []
         for row in rows:
@@ -214,33 +247,34 @@ async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
             })
         return inventory_list
 
+async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+    """从用户背包中获取特定物品的信息"""
+    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
 async def add_item_to_inventory(user_id: str, item_id: str, quantity: int = 1):
-    await _db_pool.execute("""
+    """向用户背包添加物品 (UPSERT)"""
+    await _db_connection.execute("""
         INSERT INTO inventory (user_id, item_id, quantity)
         VALUES (?, ?, ?)
         ON CONFLICT(user_id, item_id) DO UPDATE SET
         quantity = quantity + excluded.quantity;
     """, (user_id, item_id, quantity))
-    await _db_pool.commit()  
+    await _db_connection.commit()
 
-async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
-    """从用户背包中获取特定物品的信息"""
-    _db_pool.row_factory = aiosqlite.Row
-    async with _db_pool.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1):
-    """从用户背包移除物品，如果数量归零则删除记录"""
-    async with _db_pool.execute("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
-        row = await cursor.fetchone()
-    
-    if not row or row[0] < quantity:
-        return # 理论上不应该发生，逻辑层已检查，但作为安全措施
-    
-    new_quantity = row[0] - quantity
-    if new_quantity > 0:
-        await _db_pool.execute("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", (new_quantity, user_id, item_id))
-    else:
-        await _db_pool.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id))
-    await _db_pool.commit()
+async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
+    """从用户背包移除物品 (原子操作)"""
+    async with _db_connection.cursor() as cursor:
+        await cursor.execute("""
+            UPDATE inventory SET quantity = quantity - ? 
+            WHERE user_id = ? AND item_id = ? AND quantity >= ?
+        """, (quantity, user_id, item_id, quantity))
+        
+        if cursor.rowcount > 0:
+            await cursor.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+            await _db_connection.commit()
+            return True
+        else:
+            await _db_connection.rollback()
+            return False
