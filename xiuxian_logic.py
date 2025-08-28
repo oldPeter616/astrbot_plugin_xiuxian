@@ -3,22 +3,31 @@
 
 import random
 import time
-from typing import Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional
 
 from .config_manager import config
 from .models import Player
 from . import data_manager
+from . import combat_manager
 
-# ... (其他同步函数保持不变)
 POSSIBLE_SPIRITUAL_ROOTS = ["金", "木", "水", "火", "土", "天", "异"]
+
+def _calculate_base_stats(level_index: int) -> Dict[str, int]:
+    """根据境界等级计算基础战斗属性"""
+    base_hp = 100 + level_index * 50
+    base_attack = 10 + level_index * 8
+    base_defense = 5 + level_index * 4
+    return {"hp": base_hp, "max_hp": base_hp, "attack": base_attack, "defense": base_defense}
 
 def generate_new_player_stats(user_id: str) -> Player:
     """为新玩家生成初始属性"""
     root = random.choice(POSSIBLE_SPIRITUAL_ROOTS)
+    initial_stats = _calculate_base_stats(0)
     return Player(
         user_id=user_id,
         spiritual_root=f"{root}灵根",
-        gold=config.INITIAL_GOLD
+        gold=config.INITIAL_GOLD,
+        **initial_stats
     )
 
 def handle_check_in(player: Player) -> Tuple[bool, str, Player]:
@@ -72,7 +81,7 @@ def handle_end_cultivation(player: Player) -> Tuple[bool, str, Player]:
     return True, msg, player
 
 def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
-    """处理突破逻辑 (已优化)"""
+    """处理突破逻辑"""
     current_level_info = config.level_map.get(player.level)
     
     if current_level_info is None:
@@ -88,30 +97,29 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
     success_rate = next_level_info['success_rate']
 
     if player.experience < exp_needed:
-        msg = (
-            f"突破失败！\n"
-            f"目标境界：{next_level_info['level_name']}\n"
-            f"所需修为：{exp_needed} (当前拥有 {player.experience})\n"
-            f"修为不足，请继续潜心修炼。"
-        )
+        msg = (f"突破失败！\n目标境界：{next_level_info['level_name']}\n"
+               f"所需修为：{exp_needed} (当前拥有 {player.experience})")
         return False, msg, player
     
     if random.random() < success_rate:
         player.level = next_level_info['level_name']
         player.experience -= exp_needed
-        msg = (
-            f"恭喜道友！天降祥瑞，突破成功！\n"
-            f"当前境界已达：【{player.level}】\n"
-            f"消耗修为 {exp_needed} 点，剩余 {player.experience} 点。"
-        )
+        
+        new_stats = _calculate_base_stats(current_level_index + 1)
+        player.hp = new_stats['hp']
+        player.max_hp = new_stats['max_hp']
+        player.attack = new_stats['attack']
+        player.defense = new_stats['defense']
+        
+        msg = (f"恭喜道友！天降祥瑞，突破成功！\n"
+               f"当前境界已达：【{player.level}】\n"
+               f"生命值提升至 {player.max_hp}，攻击提升至 {player.attack}，防御提升至 {player.defense}！")
     else:
         punishment = int(exp_needed * config.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO)
         player.experience -= punishment
-        msg = (
-            f"可惜！道友在突破过程中气息不稳，导致失败。\n"
-            f"境界稳固在【{player.level}】，但修为空耗 {punishment} 点。\n"
-            f"请重整旗鼓，再次尝试！"
-        )
+        msg = (f"可惜！道友在突破过程中气息不稳，导致失败。\n"
+               f"境界稳固在【{player.level}】，但修为空耗 {punishment} 点。")
+        
     return True, msg, player
     
 def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool, str, Optional[Player], Optional[str]]:
@@ -133,7 +141,25 @@ def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool
     msg = f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。"
     return True, msg, player, target_item_id
 
-# --- 宗门逻辑函数 (异步重构) ---
+async def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
+    """处理物品使用逻辑"""
+    item_info = config.item_data.get(item_id)
+    if not item_info:
+        return False, "错误的物品信息。", None
+        
+    effect = item_info.get("effect")
+    if not effect:
+        return False, f"【{item_info['name']}】似乎只是凡物，无法使用。", None
+
+    effect_type = effect.get("type")
+    value = effect.get("value", 0) * quantity
+    
+    if effect_type == "add_experience":
+        player.experience += value
+        msg = f"你使用了 {quantity} 个【{item_info['name']}】，修为增加了 {value} 点！"
+        return True, msg, player
+    else:
+        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", None
 
 async def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
     """处理创建宗门逻辑"""
@@ -186,28 +212,16 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-async def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
-    """处理物品使用逻辑"""
-    item_info = config.item_data.get(item_id)
-    if not item_info:
-        return False, "错误的物品信息。", None
-        
-    effect = item_info.get("effect")
-    if not effect:
-        return False, f"【{item_info['name']}】似乎只是凡物，无法使用。", None
+async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, List[Player]]:
+    """处理PVP逻辑，并返回战报和需要更新状态的玩家列表"""
+    original_attacker_hp = attacker.hp
+    original_defender_hp = defender.hp
 
-    # 根据效果类型处理
-    effect_type = effect.get("type")
-    value = effect.get("value", 0) * quantity
+    winner, loser, combat_log = combat_manager.player_vs_player(attacker, defender)
     
-    if effect_type == "add_experience":
-        player.experience += value
-        msg = f"你使用了 {quantity} 个【{item_info['name']}】，修为增加了 {value} 点！"
-        return True, msg, player
-    # --- 未来可在此处添加更多效果类型 ---
-    # elif effect_type == "add_gold":
-    #     player.gold += value
-    #     msg = f"你使用了 {quantity} 个【{item_info['name']}】，获得了 {value} 灵石！"
-    #     return True, msg, player
-    else:
-        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", None
+    attacker.hp = original_attacker_hp
+    defender.hp = original_defender_hp
+    
+    report = "\n".join(combat_log)
+    
+    return report, [attacker, defender]

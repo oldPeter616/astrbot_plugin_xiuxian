@@ -1,0 +1,40 @@
+{
+    "mob_wolf": {
+        "name": "妖狼",
+        "hp": 80,
+        "attack": 12,
+        "defense": 5,
+        "rewards": {
+            "gold": 20,
+            "experience": 30,
+            "items": {
+                "3": 0.1
+            }
+        }
+    },
+    "mob_bat": {
+        "name": "吸血妖蝠",
+        "hp": 60,
+        "attack": 15,
+        "defense": 3,
+        "rewards": {
+            "gold": 25,
+            "experience": 35,
+            "items": {}
+        }
+    },
+    "boss_wolf_king": {
+        "name": "苍月狼王",
+        "hp": 500,
+        "attack": 25,
+        "defense": 10,
+        "rewards": {
+            "gold": 200,
+            "experience": 300,
+            "items": {
+                "1": 1.0,
+                "4": 0.2
+            }
+        }
+    }
+}

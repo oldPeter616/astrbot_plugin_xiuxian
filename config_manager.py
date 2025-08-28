@@ -6,22 +6,28 @@ from pathlib import Path
 from astrbot.api import logger
 
 class Config:
-    def __init__(self, config_file: Path, level_config_file: Path, item_config_file: Path):
+    def __init__(self, config_file: Path, level_config_file: Path, item_config_file: Path, boss_config_file: Path, monster_config_file: Path, realm_config_file: Path):
         # 存放配置数据
         self.level_data = []
         self.item_data = {}
+        self.boss_data = {}
+        self.monster_data = {} # 新增
+        self.realm_data = {}   # 新增
         self.level_map = {}
 
         # --- 配置白名单 ---
         self.ALLOWED_KEYS = {
             'CMD_START_XIUXIAN', 'CMD_PLAYER_INFO', 'CMD_CHECK_IN', 'CMD_START_CULTIVATION',
             'CMD_END_CULTIVATION', 'CMD_BREAKTHROUGH', 'CMD_SHOP', 'CMD_BUY', 'CMD_BACKPACK',
-            'CMD_CREATE_SECT', 'CMD_JOIN_SECT', 'CMD_MY_SECT', 'CMD_LEAVE_SECT', 'CMD_USE_ITEM', 'CMD_HELP',
+            'CMD_CREATE_SECT', 'CMD_JOIN_SECT', 'CMD_MY_SECT', 'CMD_LEAVE_SECT', 'CMD_USE_ITEM',
+            'CMD_SPAR', 'CMD_START_BOSS_FIGHT', 'CMD_JOIN_FIGHT', 'CMD_ATTACK_BOSS',
+            'CMD_FIGHT_STATUS', 'CMD_REALM_LIST', 'CMD_ENTER_REALM', 'CMD_REALM_ADVANCE',
+            'CMD_LEAVE_REALM', 'CMD_HELP',
             'INITIAL_GOLD', 'CHECK_IN_REWARD_MIN', 'CHECK_IN_REWARD_MAX', 'BASE_EXP_PER_MINUTE',
             'BREAKTHROUGH_FAIL_PUNISHMENT_RATIO', 'CREATE_SECT_COST', 'DATABASE_FILE'
         }
 
-        # 设置默认值... (省略)
+        # 设置默认值
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
         self.CMD_CHECK_IN = "签到"
@@ -36,19 +42,62 @@ class Config:
         self.CMD_MY_SECT = "我的宗门"
         self.CMD_LEAVE_SECT = "退出宗门"
         self.CMD_USE_ITEM = "使用"
+        self.CMD_SPAR = "切磋"
+        self.CMD_START_BOSS_FIGHT = "讨伐"
+        self.CMD_JOIN_FIGHT = "加入战斗"
+        self.CMD_ATTACK_BOSS = "攻击"
+        self.CMD_FIGHT_STATUS = "战斗状态"
+        self.CMD_REALM_LIST = "秘境列表"
+        self.CMD_ENTER_REALM = "探索秘境"
+        self.CMD_REALM_ADVANCE = "前进"
+        self.CMD_LEAVE_REALM = "离开秘境"
         self.CMD_HELP = "修仙帮助"
+        
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50
         self.CHECK_IN_REWARD_MAX = 200
         self.BASE_EXP_PER_MINUTE = 10
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
+        
         self.DATABASE_FILE = "xiuxian_data.db"
         
         self._load_config(config_file)
         self._load_level_config(level_config_file)
         self._load_item_config(item_config_file)
+        self._load_boss_config(boss_config_file)
+        self._load_monster_config(monster_config_file)
+        self._load_realm_config(realm_config_file)
 
+    def _load_monster_config(self, monster_config_file: Path):
+        try:
+            with open(monster_config_file, 'r', encoding='utf-8') as f:
+                self.monster_data = json.load(f)
+            logger.info(f"成功加载 {len(self.monster_data)} 条怪物配置。")
+        except Exception as e:
+            logger.error(f"加载怪物配置文件失败: {e}")
+
+    def _load_realm_config(self, realm_config_file: Path):
+        try:
+            with open(realm_config_file, 'r', encoding='utf-8') as f:
+                self.realm_data = json.load(f)
+            logger.info(f"成功加载 {len(self.realm_data)} 条秘境配置。")
+        except Exception as e:
+            logger.error(f"加载秘境配置文件失败: {e}")
+
+    def _load_boss_config(self, boss_config_file: Path):
+        if not boss_config_file.exists():
+            logger.error(f"Boss配置文件 {boss_config_file} 不存在！请创建它。")
+            return
+        try:
+            with open(boss_config_file, 'r', encoding='utf-8') as f:
+                self.boss_data = json.load(f)
+            logger.info(f"成功加载 {len(self.boss_data)} 条Boss配置。")
+        except json.JSONDecodeError as e:
+            logger.error(f"加载Boss配置文件 {boss_config_file} 失败：JSON格式错误 - {e}")
+        except Exception as e:
+            logger.error(f"加载Boss配置文件 {boss_config_file} 时发生未知错误: {e}")
+            
     def _load_item_config(self, item_config_file: Path):
         if not item_config_file.exists():
             logger.error(f"物品配置文件 {item_config_file} 不存在！请创建它。")
@@ -121,6 +170,7 @@ _current_dir = Path(__file__).parent
 CONFIG_PATH = _current_dir / "config.txt"
 LEVEL_CONFIG_PATH = _current_dir / "level_config.json"
 ITEM_CONFIG_PATH = _current_dir / "items.json"
+BOSS_CONFIG_PATH = _current_dir / "bosses.json" 
 
 # 实例化
-config = Config(CONFIG_PATH, LEVEL_CONFIG_PATH, ITEM_CONFIG_PATH)
+config = Config(CONFIG_PATH, LEVEL_CONFIG_PATH, ITEM_CONFIG_PATH, BOSS_CONFIG_PATH)

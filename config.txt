@@ -18,6 +18,15 @@ CMD_JOIN_SECT = 加入宗门
 CMD_MY_SECT = 我的宗门
 CMD_LEAVE_SECT = 退出宗门
 CMD_USE_ITEM = 使用
+CMD_SPAR = 切磋
+CMD_START_BOSS_FIGHT = 讨伐
+CMD_JOIN_FIGHT = 加入战斗
+CMD_ATTACK_BOSS = 攻击
+CMD_FIGHT_STATUS = 战斗状态
+CMD_REALM_LIST = 秘境列表
+CMD_ENTER_REALM = 探索秘境
+CMD_REALM_ADVANCE = 前进
+CMD_LEAVE_REALM = 离开秘境
 CMD_HELP = 修仙帮助
 
 # --- 数值设置 ---
