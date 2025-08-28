@@ -8,12 +8,8 @@ from . import data_manager, xiuxian_logic
 from .config_manager import config
 from .models import Player
 
-# --- 装饰器定义 (已重构) ---
 def player_required(func):
-    """
-    装饰器：检查玩家是否存在。
-    如果存在，则将 player 对象附加到 event 对象上 (event.player)。
-    """
+    """装饰器：检查玩家是否存在，并将player对象附加到event上。"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
         user_id = event.get_sender_id()
@@ -23,10 +19,8 @@ def player_required(func):
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
         
-        # 将 player 对象附加到 event 上下文中
         setattr(event, 'player', player)
         
-        # 使用原始参数调用被装饰的函数
         async for result in func(self, event, *args, **kwargs):
             yield result
             
@@ -38,8 +32,12 @@ class XiuXianPlugin(Star):
         super().__init__(context)
 
     async def initialize(self):
-        await data_manager.init_database()
-        logger.info("修仙插件：数据库初始化成功。")
+        """插件初始化，创建数据库连接池。"""
+        try:
+            await data_manager.init_db_pool()
+            logger.info("修仙插件：数据库连接池初始化成功。")
+        except Exception as e:
+            logger.error(f"修仙插件：数据库初始化失败，错误：{e}")
 
     @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
     async def handle_start_xiuxian(self, event: AstrMessageEvent) -> MessageEventResult:
@@ -61,7 +59,7 @@ class XiuXianPlugin(Star):
     @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
     @player_required
     async def handle_player_info(self, event: AstrMessageEvent) -> MessageEventResult:
-        player: Player = event.player # 从 event 中获取 player 对象
+        player: Player = event.player
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
         reply_msg = (
             f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
@@ -253,4 +251,6 @@ class XiuXianPlugin(Star):
         yield event.plain_result(help_text)
 
     async def terminate(self):
+        """插件卸载/停用时调用，关闭数据库连接池。"""
+        await data_manager.close_db_pool()
         logger.info("修仙插件已卸载。")

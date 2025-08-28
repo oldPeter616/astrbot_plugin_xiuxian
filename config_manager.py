@@ -10,7 +10,7 @@ class Config:
         # 存放配置数据
         self.level_data = []
         self.item_data = {}
-        self.level_map = {} # 新增：用于快速查找境界信息的字典
+        self.level_map = {}
 
         # --- 配置白名单 ---
         self.ALLOWED_KEYS = {
@@ -49,7 +49,6 @@ class Config:
         self._load_item_config(item_config_file)
 
     def _load_item_config(self, item_config_file: Path):
-        # ... (省略)
         if not item_config_file.exists():
             logger.error(f"物品配置文件 {item_config_file} 不存在！请创建它。")
             return
@@ -58,9 +57,10 @@ class Config:
             with open(item_config_file, 'r', encoding='utf-8') as f:
                 self.item_data = json.load(f)
             logger.info(f"成功加载 {len(self.item_data)} 条物品配置。")
+        except json.JSONDecodeError as e:
+            logger.error(f"加载物品配置文件 {item_config_file} 失败：JSON格式错误 - {e}")
         except Exception as e:
-            logger.error(f"加载物品配置文件 {item_config_file} 失败: {e}")
-
+            logger.error(f"加载物品配置文件 {item_config_file} 时发生未知错误: {e}")
 
     def _load_level_config(self, level_config_file: Path):
         if not level_config_file.exists():
@@ -71,21 +71,18 @@ class Config:
             with open(level_config_file, 'r', encoding='utf-8') as f:
                 self.level_data = json.load(f)
             
-            # --- 优化点: 将列表预处理为字典 ---
             for i, level_info in enumerate(self.level_data):
                 level_name = level_info.get("level_name")
                 if level_name:
-                    self.level_map[level_name] = {
-                        "index": i,
-                        **level_info # 将原始信息也拷贝进来
-                    }
+                    self.level_map[level_name] = {"index": i, **level_info}
             
             logger.info(f"成功加载并预处理 {len(self.level_data)} 条境界配置。")
+        except json.JSONDecodeError as e:
+            logger.error(f"加载境界配置文件 {level_config_file} 失败：JSON格式错误 - {e}")
         except Exception as e:
-            logger.error(f"加载境界配置文件 {level_config_file} 失败: {e}")
+            logger.error(f"加载境界配置文件 {level_config_file} 时发生未知错误: {e}")
 
     def _load_config(self, config_file: Path):
-        # ... (省略)
         if not config_file.exists():
             logger.warning(f"配置文件 {config_file} 不存在，将使用默认设置。")
             return
