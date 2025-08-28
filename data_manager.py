@@ -77,7 +77,7 @@ async def migrate_database():
         logger.info("数据库结构已是最新。")
 
 async def _create_all_tables_v2():
-    """创建版本2（最新）的所有表结构"""
+    """创建版本2最新的所有表结构"""
     await _db_pool.execute("""
         CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)
     """)
@@ -141,7 +141,7 @@ async def _upgrade_v1_to_v2():
         logger.error(f"数据库 v1 -> v2 升级失败，已回滚: {e}")
         raise
 
-# --- 以下是数据操作函数，保持不变 ---
+# --- 以下是数据操作函数 ---
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
     _db_pool.row_factory = aiosqlite.Row
@@ -221,4 +221,26 @@ async def add_item_to_inventory(user_id: str, item_id: str, quantity: int = 1):
         ON CONFLICT(user_id, item_id) DO UPDATE SET
         quantity = quantity + excluded.quantity;
     """, (user_id, item_id, quantity))
+    await _db_pool.commit()  
+
+async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+    """从用户背包中获取特定物品的信息"""
+    _db_pool.row_factory = aiosqlite.Row
+    async with _db_pool.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1):
+    """从用户背包移除物品，如果数量归零则删除记录"""
+    async with _db_pool.execute("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
+        row = await cursor.fetchone()
+    
+    if not row or row[0] < quantity:
+        return # 理论上不应该发生，逻辑层已检查，但作为安全措施
+    
+    new_quantity = row[0] - quantity
+    if new_quantity > 0:
+        await _db_pool.execute("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", (new_quantity, user_id, item_id))
+    else:
+        await _db_pool.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id))
     await _db_pool.commit()

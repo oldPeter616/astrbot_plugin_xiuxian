@@ -16,7 +16,7 @@ class Config:
         self.ALLOWED_KEYS = {
             'CMD_START_XIUXIAN', 'CMD_PLAYER_INFO', 'CMD_CHECK_IN', 'CMD_START_CULTIVATION',
             'CMD_END_CULTIVATION', 'CMD_BREAKTHROUGH', 'CMD_SHOP', 'CMD_BUY', 'CMD_BACKPACK',
-            'CMD_CREATE_SECT', 'CMD_JOIN_SECT', 'CMD_MY_SECT', 'CMD_LEAVE_SECT', 'CMD_HELP',
+            'CMD_CREATE_SECT', 'CMD_JOIN_SECT', 'CMD_MY_SECT', 'CMD_LEAVE_SECT', 'CMD_USE_ITEM', 'CMD_HELP',
             'INITIAL_GOLD', 'CHECK_IN_REWARD_MIN', 'CHECK_IN_REWARD_MAX', 'BASE_EXP_PER_MINUTE',
             'BREAKTHROUGH_FAIL_PUNISHMENT_RATIO', 'CREATE_SECT_COST', 'DATABASE_FILE'
         }
@@ -35,6 +35,7 @@ class Config:
         self.CMD_JOIN_SECT = "加入宗门"
         self.CMD_MY_SECT = "我的宗门"
         self.CMD_LEAVE_SECT = "退出宗门"
+        self.CMD_USE_ITEM = "使用"
         self.CMD_HELP = "修仙帮助"
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50

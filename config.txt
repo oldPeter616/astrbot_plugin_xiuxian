@@ -17,6 +17,7 @@ CMD_CREATE_SECT = 创建宗门
 CMD_JOIN_SECT = 加入宗门
 CMD_MY_SECT = 我的宗门
 CMD_LEAVE_SECT = 退出宗门
+CMD_USE_ITEM = 使用
 CMD_HELP = 修仙帮助
 
 # --- 数值设置 ---

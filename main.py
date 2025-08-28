@@ -225,6 +225,48 @@ class XiuXianPlugin(Star):
             "--------------------------"
         )
         yield event.plain_result(reply_msg)
+
+    @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
+    @player_required
+    async def handle_use(self, event: AstrMessageEvent) -> MessageEventResult:
+        player: Player = event.player
+        text = event.message_str.strip()
+        parts = text.split()
+        if len(parts) < 2:
+            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_USE_ITEM} <物品名> [数量]」。")
+            return
+
+        item_name = parts[1]
+        quantity = 1
+        if len(parts) > 2 and parts[2].isdigit() and int(parts[2]) > 0:
+            quantity = int(parts[2])
+
+        # 1. 查找物品ID
+        target_item_id = None
+        for item_id, info in config.item_data.items():
+            if info['name'] == item_name:
+                target_item_id = item_id
+                break
+        
+        if not target_item_id:
+            yield event.plain_result(f"背包中似乎没有名为「{item_name}」的物品。")
+            return
+
+        # 2. 检查玩家是否拥有足够数量
+        inventory_item = await data_manager.get_item_from_inventory(player.user_id, target_item_id)
+        if not inventory_item or inventory_item['quantity'] < quantity:
+            yield event.plain_result(f"你的「{item_name}」数量不足 {quantity} 个！")
+            return
+
+        # 3. 执行使用逻辑
+        success, msg, updated_player = await xiuxian_logic.handle_use_item(player, target_item_id, quantity)
+        
+        if success:
+            # 4. 消耗物品并更新玩家数据
+            await data_manager.remove_item_from_inventory(player.user_id, target_item_id, quantity)
+            await data_manager.update_player(updated_player)
+
+        yield event.plain_result(msg)
         
     @filter.command(config.CMD_HELP, "显示帮助信息")
     async def handle_help(self, event: AstrMessageEvent) -> MessageEventResult:

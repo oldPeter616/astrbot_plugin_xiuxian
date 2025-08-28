@@ -185,3 +185,29 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
+
+async def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
+    """处理物品使用逻辑"""
+    item_info = config.item_data.get(item_id)
+    if not item_info:
+        return False, "错误的物品信息。", None
+        
+    effect = item_info.get("effect")
+    if not effect:
+        return False, f"【{item_info['name']}】似乎只是凡物，无法使用。", None
+
+    # 根据效果类型处理
+    effect_type = effect.get("type")
+    value = effect.get("value", 0) * quantity
+    
+    if effect_type == "add_experience":
+        player.experience += value
+        msg = f"你使用了 {quantity} 个【{item_info['name']}】，修为增加了 {value} 点！"
+        return True, msg, player
+    # --- 未来可在此处添加更多效果类型 ---
+    # elif effect_type == "add_gold":
+    #     player.gold += value
+    #     msg = f"你使用了 {quantity} 个【{item_info['name']}】，获得了 {value} 灵石！"
+    #     return True, msg, player
+    else:
+        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", None

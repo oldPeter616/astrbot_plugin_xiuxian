@@ -9,7 +9,11 @@
         "name": "引气丹",
         "type": "丹药",
         "description": "能少量增加修为，对炼气期修士效果显著。",
-        "price": 200
+        "price": 200,
+        "effect": {
+            "type": "add_experience",
+            "value": 100
+        }
     },
     "3": {
         "name": "精铁",
