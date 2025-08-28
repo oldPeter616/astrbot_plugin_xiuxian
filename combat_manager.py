@@ -1,8 +1,9 @@
 # combat_manager.py
-# 核心战斗逻辑模块
+# 核心战斗逻辑模块 (已重构)
 
 import asyncio
 import random
+from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 from .models import Player, Boss, Monster
 from . import data_manager
@@ -97,18 +98,21 @@ class BattleManager:
                 return True, final_msg, battle_over, updated_players
 
             self.current_battle.player_attack_count += 1
+            changed_players = []
             if self.current_battle.player_attack_count % 3 == 0:
                 self.current_battle.log.append(f"【{self.current_battle.boss.name}】被激怒了，发动了猛烈的反击！")
-                await self._boss_attack()
+                changed_player = await self._boss_attack()
+                if changed_player:
+                    changed_players.append(changed_player)
             
-            return True, log_msg, False, list(self.current_battle.participants.values())
+            return True, log_msg, False, changed_players
 
-    async def _boss_attack(self):
-        """Boss攻击所有参战玩家"""
-        if not self.current_battle: return
+    async def _boss_attack(self) -> Optional[Player]:
+        """Boss攻击参战玩家, 返回被攻击的玩家对象"""
+        if not self.current_battle: return None
         
         targets = [p for p in self.current_battle.participants.values() if p.hp > 0]
-        if not targets: return
+        if not targets: return None
         
         target_player = random.choice(targets)
         damage = max(1, self.current_battle.boss.attack - target_player.defense)
@@ -119,6 +123,7 @@ class BattleManager:
             target_player.hp = 0
             log_msg += f"【{target_player.user_id[-4:]}】重伤倒地！"
         self.current_battle.log.append(log_msg)
+        return target_player
 
     async def _end_battle(self, victory: bool) -> Tuple[bool, str, List[Player]]:
         """结束世界Boss战斗并结算"""
@@ -185,36 +190,38 @@ class BattleManager:
         return status
 
 async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
-    """处理玩家切磋的逻辑 (异步化)"""
-    combat_log = [f"⚔️【切磋开始】{attacker.user_id[-4:]} vs {defender.user_id[-4:]}！"]
-    p1_hp, p2_hp = attacker.hp, defender.hp
+    """处理玩家切磋的逻辑 (使用副本)"""
+    p1 = deepcopy(attacker)
+    p2 = deepcopy(defender)
+    
+    combat_log = [f"⚔️【切磋开始】{p1.user_id[-4:]} vs {p2.user_id[-4:]}！"]
     turn = 1
     max_turns = 30
     
-    while p1_hp > 0 and p2_hp > 0 and turn <= max_turns:
+    while p1.hp > 0 and p2.hp > 0 and turn <= max_turns:
         combat_log.append(f"\n--- 第 {turn} 回合 ---")
-        damage_to_p2 = max(1, attacker.attack - defender.defense)
-        p2_hp -= damage_to_p2
-        combat_log.append(f"{attacker.user_id[-4:]} 对 {defender.user_id[-4:]} 造成了 {damage_to_p2} 点伤害。")
-        combat_log.append(f"❤️{defender.user_id[-4:]} 剩余生命: {p2_hp}/{defender.max_hp}")
+        damage_to_p2 = max(1, p1.attack - p2.defense)
+        p2.hp -= damage_to_p2
+        combat_log.append(f"{p1.user_id[-4:]} 对 {p2.user_id[-4:]} 造成了 {damage_to_p2} 点伤害。")
+        combat_log.append(f"❤️{p2.user_id[-4:]} 剩余生命: {p2.hp}/{p2.max_hp}")
         
-        if p2_hp <= 0:
-            combat_log.append(f"\n🏆【切磋结束】{attacker.user_id[-4:]} 获胜！")
+        if p2.hp <= 0:
+            combat_log.append(f"\n🏆【切磋结束】{p1.user_id[-4:]} 获胜！")
             return attacker, defender, combat_log
 
-        await asyncio.sleep(0) # 让出CPU
+        await asyncio.sleep(0)
 
-        damage_to_p1 = max(1, defender.attack - attacker.defense)
-        p1_hp -= damage_to_p1
-        combat_log.append(f"{defender.user_id[-4:]} 对 {attacker.user_id[-4:]} 造成了 {damage_to_p1} 点伤害。")
-        combat_log.append(f"❤️{attacker.user_id[-4:]} 剩余生命: {p1_hp}/{attacker.max_hp}")
+        damage_to_p1 = max(1, p2.attack - p1.defense)
+        p1.hp -= damage_to_p1
+        combat_log.append(f"{p2.user_id[-4:]} 对 {p1.user_id[-4:]} 造成了 {damage_to_p1} 点伤害。")
+        combat_log.append(f"❤️{p1.user_id[-4:]} 剩余生命: {p1.hp}/{p1.max_hp}")
 
-        if p1_hp <= 0:
-            combat_log.append(f"\n🏆【切磋结束】{defender.user_id[-4:]} 获胜！")
+        if p1.hp <= 0:
+            combat_log.append(f"\n🏆【切磋结束】{p2.user_id[-4:]} 获胜！")
             return defender, attacker, combat_log
             
         turn += 1
-        await asyncio.sleep(0) # 让出CPU
+        await asyncio.sleep(0)
 
     if turn > max_turns:
         combat_log.append("\n【平局】双方大战三十回合，未分胜负！")

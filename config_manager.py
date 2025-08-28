@@ -14,6 +14,8 @@ class Config:
         self.monster_data = {}
         self.realm_data = {}
         self.level_map = {}
+        # 预处理后的秘境事件
+        self.realm_events: Dict[str, Dict[str, list]] = {}
 
         # 保存路径以供加载时使用
         self._paths = {
@@ -80,6 +82,7 @@ class Config:
         self._load_realm_config(self._paths["realm"])
 
     def _load_config(self, config_file: Path):
+        logger.info("建议：为了更好的扩展性和健壮性，未来可考虑将 config.txt 迁移至 JSON 或 TOML 格式。")
         if not config_file.exists():
             logger.warning(f"配置文件 {config_file} 不存在，将使用默认设置。")
             return
@@ -113,17 +116,13 @@ class Config:
                 setattr(self, key, final_value)
 
     def _load_level_config(self, level_config_file: Path):
-        if not level_config_file.exists():
-            logger.error(f"境界配置文件 {level_config_file} 不存在！请创建它。")
-            return
-        
+        if not level_config_file.exists(): return
         try:
             with open(level_config_file, 'r', encoding='utf-8') as f:
                 self.level_data = json.load(f)
             
             for i, level_info in enumerate(self.level_data):
-                level_name = level_info.get("level_name")
-                if level_name:
+                if level_name := level_info.get("level_name"):
                     self.level_map[level_name] = {"index": i, **level_info}
             
             logger.info(f"成功加载并预处理 {len(self.level_data)} 条境界配置。")
@@ -133,10 +132,7 @@ class Config:
             logger.error(f"加载境界配置文件 {level_config_file} 时发生未知错误: {e}")
 
     def _load_item_config(self, item_config_file: Path):
-        if not item_config_file.exists():
-            logger.error(f"物品配置文件 {item_config_file} 不存在！请创建它。")
-            return
-        
+        if not item_config_file.exists(): return
         try:
             with open(item_config_file, 'r', encoding='utf-8') as f:
                 self.item_data = json.load(f)
@@ -147,9 +143,7 @@ class Config:
             logger.error(f"加载物品配置文件 {item_config_file} 时发生未知错误: {e}")
 
     def _load_boss_config(self, boss_config_file: Path):
-        if not boss_config_file.exists():
-            logger.error(f"Boss配置文件 {boss_config_file} 不存在！请创建它。")
-            return
+        if not boss_config_file.exists(): return
         try:
             with open(boss_config_file, 'r', encoding='utf-8') as f:
                 self.boss_data = json.load(f)
@@ -160,26 +154,34 @@ class Config:
             logger.error(f"加载Boss配置文件 {boss_config_file} 时发生未知错误: {e}")
     
     def _load_monster_config(self, monster_config_file: Path):
-        if not monster_config_file.exists():
-            logger.error(f"怪物配置文件 {monster_config_file} 不存在！请创建它。")
-            return
+        if not monster_config_file.exists(): return
         try:
             with open(monster_config_file, 'r', encoding='utf-8') as f:
                 self.monster_data = json.load(f)
             logger.info(f"成功加载 {len(self.monster_data)} 条怪物配置。")
+        except json.JSONDecodeError as e:
+            logger.error(f"加载怪物配置文件 {monster_config_file} 失败：JSON格式错误 - {e}")
         except Exception as e:
-            logger.error(f"加载怪物配置文件失败: {e}")
+            logger.error(f"加载怪物配置文件 {monster_config_file} 时发生未知错误: {e}")
 
     def _load_realm_config(self, realm_config_file: Path):
-        if not realm_config_file.exists():
-            logger.error(f"秘境配置文件 {realm_config_file} 不存在！请创建它。")
-            return
+        if not realm_config_file.exists(): return
         try:
             with open(realm_config_file, 'r', encoding='utf-8') as f:
                 self.realm_data = json.load(f)
-            logger.info(f"成功加载 {len(self.realm_data)} 条秘境配置。")
+
+            # 预处理秘境事件
+            for realm_id, realm_info in self.realm_data.items():
+                self.realm_events[realm_id] = {'monster': [], 'treasure': []}
+                for event in realm_info.get("events", []):
+                    if event['type'] in self.realm_events[realm_id]:
+                        self.realm_events[realm_id][event['type']].append(event)
+            
+            logger.info(f"成功加载并预处理 {len(self.realm_data)} 条秘境配置。")
+        except json.JSONDecodeError as e:
+            logger.error(f"加载秘境配置文件 {realm_config_file} 失败：JSON格式错误 - {e}")
         except Exception as e:
-            logger.error(f"加载秘境配置文件失败: {e}")
+            logger.error(f"加载秘境配置文件 {realm_config_file} 时发生未知错误: {e}")
 
 # 路径定义
 _current_dir = Path(__file__).parent

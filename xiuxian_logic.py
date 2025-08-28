@@ -1,5 +1,5 @@
 # xiuxian_logic.py
-# 核心游戏逻辑模块
+# 核心游戏逻辑模块 (已重构)
 
 import random
 import time
@@ -224,14 +224,9 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
 
 async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, List[Player]]:
     """处理PVP逻辑，并返回战报和需要更新状态的玩家列表"""
-    original_attacker_hp = attacker.hp
-    original_defender_hp = defender.hp
-
     winner, loser, combat_log = await combat_manager.player_vs_player(attacker, defender)
-    
-    attacker.hp = original_attacker_hp
-    defender.hp = original_defender_hp
     
     report = "\n".join(combat_log)
     
-    return report, [attacker, defender]
+    # 切磋不改变HP，因此返回空列表
+    return report, []

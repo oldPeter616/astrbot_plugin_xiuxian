@@ -114,10 +114,7 @@ async def _upgrade_v1_to_v2():
                 UNIQUE(user_id, item_id)
             )
         """)
-        await _db_connection.execute("""
-            INSERT INTO inventory (user_id, item_id, quantity)
-            SELECT user_id, item_id, quantity FROM inventory_old
-        """)
+        await _db_connection.execute("INSERT INTO inventory (user_id, item_id, quantity) SELECT user_id, item_id, quantity FROM inventory_old")
         await _db_connection.execute("DROP TABLE inventory_old")
         await _db_connection.execute("UPDATE db_info SET version = 2")
         await _db_connection.commit()
@@ -128,26 +125,28 @@ async def _upgrade_v1_to_v2():
         raise
 
 async def _upgrade_v2_to_v3():
-    """从版本2升级到版本3的迁移逻辑"""
+    """从版本2升级到版本3的迁移逻辑 (已重构)"""
     logger.info("正在执行数据库升级: v2 -> v3 ...")
     try:
-        await _db_connection.execute("ALTER TABLE players ADD COLUMN hp INTEGER NOT NULL DEFAULT 100")
-        await _db_connection.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 100")
-        await _db_connection.execute("ALTER TABLE players ADD COLUMN attack INTEGER NOT NULL DEFAULT 10")
-        await _db_connection.execute("ALTER TABLE players ADD COLUMN defense INTEGER NOT NULL DEFAULT 5")
+        async with _db_connection.execute("PRAGMA table_info(players)") as cursor:
+            columns = [row['name'] for row in await cursor.fetchall()]
         
+        if 'hp' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN hp INTEGER NOT NULL DEFAULT 100")
+        if 'max_hp' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 100")
+        if 'attack' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN attack INTEGER NOT NULL DEFAULT 10")
+        if 'defense' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN defense INTEGER NOT NULL DEFAULT 5")
+
         await _db_connection.execute("UPDATE db_info SET version = 3")
         await _db_connection.commit()
         logger.info("v2 -> v3 升级成功！")
     except Exception as e:
-        if "duplicate column name" in str(e):
-            logger.warning("战斗属性列已存在，跳过添加。")
-            await _db_connection.execute("UPDATE db_info SET version = 3")
-            await _db_connection.commit()
-        else:
-            await _db_connection.rollback()
-            logger.error(f"数据库 v2 -> v3 升级失败，已回滚: {e}")
-            raise
+        await _db_connection.rollback()
+        logger.error(f"数据库 v2 -> v3 升级失败，已回滚: {e}")
+        raise
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
     """通过用户ID获取玩家数据 (已加固)"""
@@ -205,36 +204,30 @@ async def update_player(player: Player):
     await _db_connection.commit()
 
 async def create_sect(sect_name: str, leader_id: str) -> int:
-    """创建新宗门并返回宗门ID"""
     async with _db_connection.execute("INSERT INTO sects (name, leader_id) VALUES (?, ?)", (sect_name, leader_id)) as cursor:
         await _db_connection.commit()
         return cursor.lastrowid
 
 async def get_sect_by_name(sect_name: str) -> Optional[Dict[str, Any]]:
-    """根据名称查找宗门"""
     async with _db_connection.execute("SELECT * FROM sects WHERE name = ?", (sect_name,)) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def get_sect_by_id(sect_id: int) -> Optional[Dict[str, Any]]:
-    """根据ID查找宗门"""
     async with _db_connection.execute("SELECT * FROM sects WHERE id = ?", (sect_id,)) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def get_sect_members(sect_id: int) -> List[Player]:
-    """获取宗门所有成员 (已优化)"""
     async with _db_connection.execute("SELECT * FROM players WHERE sect_id = ?", (sect_id,)) as cursor:
         rows = await cursor.fetchall()
         return [Player(**dict(row)) for row in rows]
 
 async def update_player_sect(user_id: str, sect_id: Optional[int], sect_name: Optional[str]):
-    """更新玩家的宗门信息"""
     await _db_connection.execute("UPDATE players SET sect_id = ?, sect_name = ? WHERE user_id = ?", (sect_id, sect_name, user_id))
     await _db_connection.commit()
 
 async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
-    """获取指定用户的背包物品列表"""
     async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
         rows = await cursor.fetchall()
         inventory_list = []
@@ -248,13 +241,11 @@ async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
         return inventory_list
 
 async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
-    """从用户背包中获取特定物品的信息"""
     async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def add_item_to_inventory(user_id: str, item_id: str, quantity: int = 1):
-    """向用户背包添加物品 (UPSERT)"""
     await _db_connection.execute("""
         INSERT INTO inventory (user_id, item_id, quantity)
         VALUES (?, ?, ?)

@@ -1,5 +1,5 @@
 # realm_manager.py
-# 秘境探索管理器 
+# 秘境探索管理器 (已重构)
 
 import random
 import asyncio
@@ -27,7 +27,6 @@ class RealmManager:
         if player.gold < cost:
             return False, f"进入此秘境需要 {cost} 灵石，你的灵石不足。"
         
-        # 境界等级检查
         player_level_idx = config.level_map.get(player.level, {}).get("index", -1)
         req_level_idx = config.level_map.get(realm_config['level_requirement'], {}).get("index", 999)
         if player_level_idx < req_level_idx:
@@ -56,7 +55,6 @@ class RealmManager:
 
         session.current_floor += 1
         
-        # 最后一层挑战最终Boss
         if session.current_floor == session.total_floors + 1:
             realm_config = config.realm_data.get(session.realm_id)
             boss_id = realm_config['boss_id']
@@ -77,16 +75,18 @@ class RealmManager:
                 return False, "\n".join(log), {}
         
         realm_config = config.realm_data[session.realm_id]
-        events = realm_config['events']
-        event_types = [e['type'] for e in events]
-        event_weights = [e['weight'] for e in events]
+        events_pool = config.realm_events.get(session.realm_id, {})
+        
+        # 权重随机选择事件类型
+        event_types = list(events_pool.keys())
+        event_weights = [sum(e['weight'] for e in events_pool[t]) for t in event_types]
         chosen_event_type = random.choices(event_types, weights=event_weights, k=1)[0]
         
         event_log = [f"--- 第 {session.current_floor}/{session.total_floors} 层 ---"]
         
-        if chosen_event_type == "monster":
-            possible_monsters = [e['id'] for e in events if e['type'] == 'monster']
-            monster_id = random.choice(possible_monsters)
+        if chosen_event_type == "monster" and events_pool['monster']:
+            chosen_monster_event = random.choice(events_pool['monster'])
+            monster_id = chosen_monster_event['id']
             monster_config = config.monster_data[monster_id]
             enemy = Monster(id=monster_id, **monster_config, max_hp=monster_config['hp'])
             
@@ -105,13 +105,10 @@ class RealmManager:
                 self.end_session(player.user_id)
                 return False, "\n".join(event_log), {}
         
-        elif chosen_event_type == "treasure":
-            treasure_config = next((e for e in events if e['type'] == 'treasure'), None)
-            if treasure_config:
-                self._apply_rewards(session, treasure_config['rewards'])
-                event_log.append("你发现了一个宝箱，获得了一些资源！")
-            else:
-                event_log.append("这里似乎什么都没有...")
+        elif chosen_event_type == "treasure" and events_pool['treasure']:
+            chosen_treasure_event = random.choice(events_pool['treasure'])
+            self._apply_rewards(session, chosen_treasure_event['rewards'])
+            event_log.append("你发现了一个宝箱，获得了一些资源！")
             
             if session.current_floor == session.total_floors:
                 event_log.append("你来到了最后一层，前方就是最终头目！再次「前进」以发起挑战！")
@@ -119,7 +116,7 @@ class RealmManager:
                 event_log.append("你继续向深处走去...")
             return True, "\n".join(event_log), {}
             
-        return False, "发生未知错误。", {}
+        return False, "似乎什么都没有发生，你继续前进。", {}
 
     def _apply_rewards(self, session: RealmSession, rewards: dict):
         """应用奖励到会话中"""

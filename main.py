@@ -9,12 +9,8 @@ from . import data_manager, xiuxian_logic, combat_manager, realm_manager
 from .config_manager import config
 from .models import Player
 
-# --- 装饰器定义 ---
 def player_required(func):
-    """
-    装饰器：检查玩家是否存在。
-    如果存在，则将 player 对象附加到 event 对象上 (event.player)。
-    """
+    """装饰器：检查玩家是否存在，并将player对象附加到event上。"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
         user_id = event.get_sender_id()
@@ -24,10 +20,8 @@ def player_required(func):
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
         
-        # 将 player 对象附加到 event 上下文中
         setattr(event, 'player', player)
         
-        # 使用原始参数调用被装饰的函数
         async for result in func(self, event, *args, **kwargs):
             yield result
             
@@ -41,7 +35,8 @@ class XiuXianPlugin(Star):
         self.realm_manager = realm_manager.RealmManager()
 
     async def initialize(self):
-        """插件初始化，创建数据库连接池。"""
+        """插件初始化"""
+        config.load()
         try:
             await data_manager.init_db_pool()
             logger.info("修仙插件：数据库连接池初始化成功。")
@@ -153,8 +148,7 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_buy(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=2)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_BUY} <物品名> [数量]」。")
             return
@@ -174,8 +168,7 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_use(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=2)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_USE_ITEM} <物品名> [数量]」。")
             return
@@ -195,15 +188,13 @@ class XiuXianPlugin(Star):
             yield event.plain_result(f"背包中似乎没有名为「{item_name}」的物品。")
             return
 
-        inventory_item = await data_manager.get_item_from_inventory(player.user_id, target_item_id)
-        if not inventory_item or inventory_item['quantity'] < quantity:
-            yield event.plain_result(f"你的「{item_name}」数量不足 {quantity} 个！")
-            return
+        if not await data_manager.remove_item_from_inventory(player.user_id, target_item_id, quantity):
+             yield event.plain_result(f"你的「{item_name}」数量不足 {quantity} 个！")
+             return
 
-        success, msg, updated_player = await xiuxian_logic.handle_use_item(player, target_item_id, quantity)
+        success, msg, updated_player = xiuxian_logic.handle_use_item(player, target_item_id, quantity)
         
         if success:
-            await data_manager.remove_item_from_inventory(player.user_id, target_item_id, quantity)
             await data_manager.update_player(updated_player)
 
         yield event.plain_result(msg)
@@ -212,8 +203,7 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_create_sect(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_CREATE_SECT} <宗门名称>」。")
             return
@@ -228,8 +218,7 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_join_sect(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_JOIN_SECT} <宗门名称>」。")
             return
@@ -259,8 +248,11 @@ class XiuXianPlugin(Star):
             
         sect_info = await data_manager.get_sect_by_id(player.sect_id)
         if not sect_info:
-            yield event.plain_result("错误：找不到你的宗门信息，可能已被解散。")
-            await data_manager.update_player_sect(player.user_id, None, None)
+            # 数据自愈，移除玩家失效的宗门信息
+            player.sect_id = None
+            player.sect_name = None
+            await data_manager.update_player(player)
+            yield event.plain_result("错误：找不到你的宗门信息，可能已被解散。已将你设为散修。")
             return
 
         leader_info = f"宗主ID: {sect_info['leader_id']}"
@@ -307,10 +299,7 @@ class XiuXianPlugin(Star):
             yield event.plain_result("对方气血不满，此时挑战非君子所为。")
             return
 
-        report, updated_players = await xiuxian_logic.handle_pvp(attacker, defender)
-        
-        for p in updated_players:
-            await data_manager.update_player(p)
+        report, _ = await xiuxian_logic.handle_pvp(attacker, defender)
             
         yield event.plain_result(report)
 
@@ -318,8 +307,7 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_start_boss_fight(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_START_BOSS_FIGHT} <Boss名>」。")
             return
@@ -355,20 +343,13 @@ class XiuXianPlugin(Star):
     @player_required
     async def handle_attack_boss(self, event: AstrMessageEvent) -> MessageEventResult:
         player: Player = event.player
-        # 返回值变为元组，包含更明确的状态
         success, msg, battle_over, updated_players = await self.battle_manager.player_attack(player)
         
         yield event.plain_result(msg)
         
-        if battle_over:
-            # 战斗结束，更新所有参与者
+        if success:
             for p in updated_players:
                 await data_manager.update_player(p)
-        elif success:
-            # 普通攻击，只更新被反击的玩家
-            for p in updated_players:
-                 if p.hp < p.max_hp: 
-                    await data_manager.update_player(p)
     
     @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")
     async def handle_fight_status(self, event: AstrMessageEvent) -> MessageEventResult:
@@ -394,8 +375,7 @@ class XiuXianPlugin(Star):
             yield event.plain_result(f"你已在秘境【{self.realm_manager.get_session(player.user_id).realm_name}】中！")
             return
             
-        text = event.message_str.strip()
-        parts = text.split()
+        parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_ENTER_REALM} <秘境名>」。")
             return
@@ -427,8 +407,15 @@ class XiuXianPlugin(Star):
             yield event.plain_result("你不在任何秘境中，无法前进。")
             return
             
-        success, msg, _ = self.realm_manager.advance_session(player)
+        success, msg, rewards = await self.realm_manager.advance_session(player)
         
+        # 无论成功失败，都需要更新玩家状态（例如HP, 获得的奖励等）
+        if rewards:
+            player.gold += rewards.get("gold", 0)
+            player.experience += rewards.get("experience", 0)
+            for item_id, qty in rewards.get("items", {}).items():
+                await data_manager.add_item_to_inventory(player.user_id, item_id, qty)
+
         await data_manager.update_player(player)
         
         yield event.plain_result(msg)
@@ -451,9 +438,9 @@ class XiuXianPlugin(Star):
         reward_log += f" - 灵石: {rewards['gold']}\n"
         reward_log += f" - 修为: {rewards['experience']}\n"
         
-        if rewards['items']:
+        if items := rewards.get('items'):
             reward_log += " - 物品:\n"
-            for item_id, qty in rewards['items'].items():
+            for item_id, qty in items.items():
                 await data_manager.add_item_to_inventory(player.user_id, item_id, qty)
                 item_name = config.item_data.get(item_id, {}).get("name", "未知物品")
                 reward_log += f"   - 【{item_name}】x{qty}\n"
