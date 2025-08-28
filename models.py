@@ -21,6 +21,9 @@ class Player:
     max_hp: int = 100
     attack: int = 10
     defense: int = 5
+    # 新增字段，用于秘境持久化
+    realm_id: Optional[str] = None
+    realm_floor: int = 0
 
 @dataclass
 class Boss:

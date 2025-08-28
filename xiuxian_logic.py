@@ -2,7 +2,7 @@
 # 核心游戏逻辑模块 (已重构)
 
 import random
-import time
+import asyncio # 导入asyncio
 from typing import Tuple, Dict, Any, Optional
 
 from .config_manager import config
@@ -32,7 +32,8 @@ def generate_new_player_stats(user_id: str) -> Player:
 
 def handle_check_in(player: Player) -> Tuple[bool, str, Player]:
     """处理签到逻辑"""
-    now = time.time()
+    now = asyncio.get_running_loop().time()
+    # 假设 last_check_in 存储的也是 loop time
     if now - player.last_check_in < 22 * 60 * 60:
         return False, "道友，今日已经签到过了，请明日再来。", player
 
@@ -49,7 +50,7 @@ def handle_start_cultivation(player: Player) -> Tuple[bool, str, Player]:
         return False, f"道友当前正在「{player.state}」中，无法分心闭关。", player
     
     player.state = "修炼中"
-    player.state_start_time = time.time()
+    player.state_start_time = asyncio.get_running_loop().time() 
     
     msg = "道友已进入冥想状态，开始闭关修炼。使用「出关」可查看修炼成果。"
     return True, msg, player
@@ -59,7 +60,7 @@ def handle_end_cultivation(player: Player) -> Tuple[bool, str, Player]:
     if player.state != "修炼中":
         return False, "道友尚未开始闭关，何谈出关？", player
     
-    now = time.time()
+    now = asyncio.get_running_loop().time()
     duration_minutes = (now - player.state_start_time) / 60
     
     if duration_minutes < 1:

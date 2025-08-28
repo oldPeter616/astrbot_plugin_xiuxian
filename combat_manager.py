@@ -14,7 +14,6 @@ class BattleSession:
     def __init__(self, boss: Boss):
         self.boss = boss
         self.participants: Dict[str, Player] = {}
-        self.last_attack_time: Dict[str, float] = {}
         self.total_damage: Dict[str, int] = {}
         self.start_time = asyncio.get_running_loop().time()
         self.lock = asyncio.Lock()
@@ -228,30 +227,34 @@ async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional
     
     return None, None, combat_log
 
-async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str]]:
-    """处理玩家 vs 普通怪物的战斗 (异步化)"""
+async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str], Player]:
+    """
+    处理玩家 vs 普通怪物的战斗。
+    返回: (是否胜利, 战斗日志, 战斗后的玩家状态副本)
+    """
     log = [f"你遭遇了【{monster.name}】！"]
-    player_hp, monster_hp = player.hp, monster.hp
+    p = deepcopy(player) # 使用玩家对象的副本进行战斗
+    monster_hp = monster.hp
 
-    while player_hp > 0 and monster_hp > 0:
-        damage_to_monster = max(1, player.attack - monster.defense)
+    while p.hp > 0 and monster_hp > 0:
+        damage_to_monster = max(1, p.attack - monster.defense)
         monster_hp -= damage_to_monster
         log.append(f"你对【{monster.name}】造成了 {damage_to_monster} 点伤害。")
 
         if monster_hp <= 0:
             log.append(f"你成功击败了【{monster.name}】！")
-            player.hp = player_hp
-            return True, log
+            return True, log, p
 
         await asyncio.sleep(0)
 
-        damage_to_player = max(1, monster.attack - player.defense)
-        player_hp -= damage_to_player
+        damage_to_player = max(1, monster.attack - p.defense)
+        p.hp -= damage_to_player
         log.append(f"【{monster.name}】对你造成了 {damage_to_player} 点伤害。")
 
-    if player_hp <= 0:
+    if p.hp <= 0:
         log.append("你不敌对手，重伤倒地...")
-        player.hp = 1
-        return False, log
+        p.hp = 1 # 战斗失败后保留1点生命
+        return False, log, p
     
-    return False, log
+    # 理论上不会到达这里，但在循环外返回以防万一
+    return False, log, p

@@ -3,39 +3,33 @@
 
 import json
 from pathlib import Path
+from typing import Dict, Any
+
 from astrbot.api import logger
 
 class Config:
-    def __init__(self, config_file: Path, level_config_file: Path, item_config_file: Path, boss_config_file: Path, monster_config_file: Path, realm_config_file: Path):
-        # 存放配置数据
-        self.level_data = []
-        self.item_data = {}
-        self.boss_data = {}
-        self.monster_data = {}
-        self.realm_data = {}
-        self.level_map = {}
-        # 预处理后的秘境事件
-        self.realm_events: Dict[str, Dict[str, list]] = {}
-
-        # 保存路径以供加载时使用
+    def __init__(self, base_dir: Path):
+        # --- 文件路径定义 ---
+        self._base_dir = base_dir
         self._paths = {
-            "config": config_file, "level": level_config_file, "item": item_config_file,
-            "boss": boss_config_file, "monster": monster_config_file, "realm": realm_config_file
+            "config": base_dir / "config.json",
+            "level": base_dir / "level_config.json",
+            "item": base_dir / "items.json",
+            "boss": base_dir / "bosses.json",
+            "monster": base_dir / "monsters.json",
+            "realm": base_dir / "realms.json"
         }
 
-        # --- 配置白名单 ---
-        self.ALLOWED_KEYS = {
-            'CMD_START_XIUXIAN', 'CMD_PLAYER_INFO', 'CMD_CHECK_IN', 'CMD_START_CULTIVATION',
-            'CMD_END_CULTIVATION', 'CMD_BREAKTHROUGH', 'CMD_SHOP', 'CMD_BUY', 'CMD_BACKPACK',
-            'CMD_CREATE_SECT', 'CMD_JOIN_SECT', 'CMD_MY_SECT', 'CMD_LEAVE_SECT', 'CMD_USE_ITEM',
-            'CMD_SPAR', 'CMD_START_BOSS_FIGHT', 'CMD_JOIN_FIGHT', 'CMD_ATTACK_BOSS',
-            'CMD_FIGHT_STATUS', 'CMD_REALM_LIST', 'CMD_ENTER_REALM', 'CMD_REALM_ADVANCE',
-            'CMD_LEAVE_REALM', 'CMD_HELP',
-            'INITIAL_GOLD', 'CHECK_IN_REWARD_MIN', 'CHECK_IN_REWARD_MAX', 'BASE_EXP_PER_MINUTE',
-            'BREAKTHROUGH_FAIL_PUNISHMENT_RATIO', 'CREATE_SECT_COST', 'DATABASE_FILE'
-        }
-
-        # 设置默认值
+        # --- 配置数据容器 ---
+        self.level_data: list = []
+        self.item_data: dict = {}
+        self.boss_data: dict = {}
+        self.monster_data: dict = {}
+        self.realm_data: dict = {}
+        self.level_map: dict = {}
+        self.realm_events: Dict[str, Dict[str, list]] = {}
+        
+        # --- 设置默认值 ---
         self._set_defaults()
 
     def _set_defaults(self):
@@ -64,133 +58,76 @@ class Config:
         self.CMD_REALM_ADVANCE = "前进"
         self.CMD_LEAVE_REALM = "离开秘境"
         self.CMD_HELP = "修仙帮助"
+        
+        # 数值
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50
         self.CHECK_IN_REWARD_MAX = 200
         self.BASE_EXP_PER_MINUTE = 10
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
+        
+        # 文件
         self.DATABASE_FILE = "xiuxian_data.db"
-    
+
+    def _load_json_config(self, file_path: Path, attribute_name: str, log_name: str) -> bool:
+        """通用JSON配置文件加载器"""
+        if not file_path.exists():
+            logger.warning(f"{log_name}配置文件 {file_path} 不存在，跳过加载。")
+            return False
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                setattr(self, attribute_name, data)
+                logger.info(f"成功加载 {len(data)} 条 {log_name} 配置。")
+                return True
+        except json.JSONDecodeError as e:
+            logger.error(f"加载{log_name}配置文件 {file_path} 失败：JSON格式错误 - {e}")
+        except Exception as e:
+            logger.error(f"加载{log_name}配置文件 {file_path} 时发生未知错误: {e}")
+        return False
+
     def load(self):
         """显式加载所有配置文件"""
-        self._load_config(self._paths["config"])
-        self._load_level_config(self._paths["level"])
-        self._load_item_config(self._paths["item"])
-        self._load_boss_config(self._paths["boss"])
-        self._load_monster_config(self._paths["monster"])
-        self._load_realm_config(self._paths["realm"])
+        # 加载主配置文件
+        if self._load_json_config(self._paths["config"], "main_config", "主"):
+            main_cfg = getattr(self, "main_config")
+            for category, settings in main_cfg.items():
+                for key, value in settings.items():
+                    setattr(self, key, value)
 
-    def _load_config(self, config_file: Path):
-        logger.info("建议：为了更好的扩展性和健壮性，未来可考虑将 config.txt 迁移至 JSON 或 TOML 格式。")
-        if not config_file.exists():
-            logger.warning(f"配置文件 {config_file} 不存在，将使用默认设置。")
-            return
+        # 加载其他数据文件
+        self._load_json_config(self._paths["level"], "level_data", "境界")
+        self._load_json_config(self._paths["item"], "item_data", "物品")
+        self._load_json_config(self._paths["boss"], "boss_data", "Boss")
+        self._load_json_config(self._paths["monster"], "monster_data", "怪物")
+        self._load_json_config(self._paths["realm"], "realm_data", "秘境")
 
-        with open(config_file, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                
-                parts = line.split('=', 1)
-                if len(parts) != 2:
-                    continue
-                
-                key = parts[0].strip()
-                value_str = parts[1].strip()
+        # --- 数据后处理 ---
+        self._post_process_level_data()
+        self._post_process_realm_data()
 
-                if key not in self.ALLOWED_KEYS:
-                    logger.warning(f"配置文件 {config_file.name} 第 {line_num} 行发现未知配置项 '{key}'，已忽略。")
-                    continue
+    def _post_process_level_data(self):
+        """预处理境界数据"""
+        for i, level_info in enumerate(self.level_data):
+            if level_name := level_info.get("level_name"):
+                self.level_map[level_name] = {"index": i, **level_info}
 
-                final_value = None
-                try:
-                    final_value = int(value_str)
-                except ValueError:
-                    try:
-                        final_value = float(value_str)
-                    except ValueError:
-                        final_value = value_str
-                
-                setattr(self, key, final_value)
+    def _post_process_realm_data(self):
+        """预处理秘境事件"""
+        for realm_id, realm_info in self.realm_data.items():
+            self.realm_events[realm_id] = {'monster': [], 'treasure': []}
+            for event in realm_info.get("events", []):
+                if event['type'] in self.realm_events[realm_id]:
+                    self.realm_events[realm_id][event['type']].append(event)
 
-    def _load_level_config(self, level_config_file: Path):
-        if not level_config_file.exists(): return
-        try:
-            with open(level_config_file, 'r', encoding='utf-8') as f:
-                self.level_data = json.load(f)
-            
-            for i, level_info in enumerate(self.level_data):
-                if level_name := level_info.get("level_name"):
-                    self.level_map[level_name] = {"index": i, **level_info}
-            
-            logger.info(f"成功加载并预处理 {len(self.level_data)} 条境界配置。")
-        except json.JSONDecodeError as e:
-            logger.error(f"加载境界配置文件 {level_config_file} 失败：JSON格式错误 - {e}")
-        except Exception as e:
-            logger.error(f"加载境界配置文件 {level_config_file} 时发生未知错误: {e}")
+    def get_item_by_name(self, name: str) -> tuple[str | None, dict | None]:
+        """根据名称查找物品"""
+        for item_id, info in self.item_data.items():
+            if info.get("name") == name:
+                return item_id, info
+        return None, None
 
-    def _load_item_config(self, item_config_file: Path):
-        if not item_config_file.exists(): return
-        try:
-            with open(item_config_file, 'r', encoding='utf-8') as f:
-                self.item_data = json.load(f)
-            logger.info(f"成功加载 {len(self.item_data)} 条物品配置。")
-        except json.JSONDecodeError as e:
-            logger.error(f"加载物品配置文件 {item_config_file} 失败：JSON格式错误 - {e}")
-        except Exception as e:
-            logger.error(f"加载物品配置文件 {item_config_file} 时发生未知错误: {e}")
-
-    def _load_boss_config(self, boss_config_file: Path):
-        if not boss_config_file.exists(): return
-        try:
-            with open(boss_config_file, 'r', encoding='utf-8') as f:
-                self.boss_data = json.load(f)
-            logger.info(f"成功加载 {len(self.boss_data)} 条Boss配置。")
-        except json.JSONDecodeError as e:
-            logger.error(f"加载Boss配置文件 {boss_config_file} 失败：JSON格式错误 - {e}")
-        except Exception as e:
-            logger.error(f"加载Boss配置文件 {boss_config_file} 时发生未知错误: {e}")
-    
-    def _load_monster_config(self, monster_config_file: Path):
-        if not monster_config_file.exists(): return
-        try:
-            with open(monster_config_file, 'r', encoding='utf-8') as f:
-                self.monster_data = json.load(f)
-            logger.info(f"成功加载 {len(self.monster_data)} 条怪物配置。")
-        except json.JSONDecodeError as e:
-            logger.error(f"加载怪物配置文件 {monster_config_file} 失败：JSON格式错误 - {e}")
-        except Exception as e:
-            logger.error(f"加载怪物配置文件 {monster_config_file} 时发生未知错误: {e}")
-
-    def _load_realm_config(self, realm_config_file: Path):
-        if not realm_config_file.exists(): return
-        try:
-            with open(realm_config_file, 'r', encoding='utf-8') as f:
-                self.realm_data = json.load(f)
-
-            # 预处理秘境事件
-            for realm_id, realm_info in self.realm_data.items():
-                self.realm_events[realm_id] = {'monster': [], 'treasure': []}
-                for event in realm_info.get("events", []):
-                    if event['type'] in self.realm_events[realm_id]:
-                        self.realm_events[realm_id][event['type']].append(event)
-            
-            logger.info(f"成功加载并预处理 {len(self.realm_data)} 条秘境配置。")
-        except json.JSONDecodeError as e:
-            logger.error(f"加载秘境配置文件 {realm_config_file} 失败：JSON格式错误 - {e}")
-        except Exception as e:
-            logger.error(f"加载秘境配置文件 {realm_config_file} 时发生未知错误: {e}")
-
-# 路径定义
+# 全局配置实例
 _current_dir = Path(__file__).parent
-CONFIG_PATH = _current_dir / "config.txt"
-LEVEL_CONFIG_PATH = _current_dir / "level_config.json"
-ITEM_CONFIG_PATH = _current_dir / "items.json"
-BOSS_CONFIG_PATH = _current_dir / "bosses.json"
-MONSTER_CONFIG_PATH = _current_dir / "monsters.json"
-REALM_CONFIG_PATH = _current_dir / "realms.json"
-
-# 实例化时传入所有路径
-config = Config(CONFIG_PATH, LEVEL_CONFIG_PATH, ITEM_CONFIG_PATH, BOSS_CONFIG_PATH, MONSTER_CONFIG_PATH, REALM_CONFIG_PATH)
+config = Config(_current_dir)

@@ -15,7 +15,7 @@ DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-LATEST_DB_VERSION = 3
+LATEST_DB_VERSION = 4 # 版本号提升
 
 # --- 连接核心 (重命名) ---
 _db_connection: Optional[aiosqlite.Connection] = None
@@ -66,13 +66,16 @@ async def migrate_database():
             current_version = 2
         if current_version < 3:
             await _upgrade_v2_to_v3()
+            current_version = 3
+        if current_version < 4:
+            await _upgrade_v3_to_v4() # 新增迁移步骤
         
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")
 
-async def _create_all_tables_v3():
-    """创建版本3（最新）的所有表结构"""
+async def _create_all_tables_v4():
+    """创建版本4（最新）的所有表结构"""
     await _db_connection.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await _db_connection.execute("""
         CREATE TABLE IF NOT EXISTS sects (
@@ -88,6 +91,7 @@ async def _create_all_tables_v3():
             state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER,
             sect_name TEXT, hp INTEGER NOT NULL, max_hp INTEGER NOT NULL,
             attack INTEGER NOT NULL, defense INTEGER NOT NULL,
+            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, -- 新增字段
             FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
@@ -148,42 +152,44 @@ async def _upgrade_v2_to_v3():
         logger.error(f"数据库 v2 -> v3 升级失败，已回滚: {e}")
         raise
 
+async def _upgrade_v3_to_v4():
+    """从版本3升级到版本4的迁移逻辑"""
+    logger.info("正在执行数据库升级: v3 -> v4 ...")
+    try:
+        async with _db_connection.execute("PRAGMA table_info(players)") as cursor:
+            columns = [row['name'] for row in await cursor.fetchall()]
+        
+        if 'realm_id' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN realm_id TEXT")
+        if 'realm_floor' not in columns:
+            await _db_connection.execute("ALTER TABLE players ADD COLUMN realm_floor INTEGER NOT NULL DEFAULT 0")
+
+        await _db_connection.execute("UPDATE db_info SET version = 4")
+        await _db_connection.commit()
+        logger.info("v3 -> v4 升级成功！")
+    except Exception as e:
+        await _db_connection.rollback()
+        logger.error(f"数据库 v3 -> v4 升级失败，已回滚: {e}")
+        raise
+
 async def get_player_by_id(user_id: str) -> Optional[Player]:
-    """通过用户ID获取玩家数据 (已加固)"""
+    """通过用户ID获取玩家数据"""
     async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
         row = await cursor.fetchone()
-        if not row:
-            return None
-        player_data = dict(row)
-        return Player(
-            user_id=player_data.get('user_id'),
-            level=player_data.get('level', '炼气一层'),
-            spiritual_root=player_data.get('spiritual_root', '未知'),
-            experience=player_data.get('experience', 0),
-            gold=player_data.get('gold', 0),
-            last_check_in=player_data.get('last_check_in', 0.0),
-            state=player_data.get('state', '空闲'),
-            state_start_time=player_data.get('state_start_time', 0.0),
-            sect_id=player_data.get('sect_id'),
-            sect_name=player_data.get('sect_name'),
-            hp=player_data.get('hp', 100),
-            max_hp=player_data.get('max_hp', 100),
-            attack=player_data.get('attack', 10),
-            defense=player_data.get('defense', 5)
-        )
+        return Player(**dict(row)) if row else None
 
 async def create_player(player: Player):
     """创建新玩家"""
     await _db_connection.execute("""
         INSERT INTO players (user_id, level, spiritual_root, experience, gold, 
                              last_check_in, state, state_start_time, sect_id, 
-                             sect_name, hp, max_hp, attack, defense)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             sect_name, hp, max_hp, attack, defense, realm_id, realm_floor)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         player.user_id, player.level, player.spiritual_root, player.experience,
         player.gold, player.last_check_in, player.state, player.state_start_time,
         player.sect_id, player.sect_name, player.hp, player.max_hp,
-        player.attack, player.defense
+        player.attack, player.defense, player.realm_id, player.realm_floor
     ))
     await _db_connection.commit()
 
@@ -193,13 +199,15 @@ async def update_player(player: Player):
         UPDATE players
         SET level = ?, spiritual_root = ?, experience = ?, gold = ?, last_check_in = ?, 
             state = ?, state_start_time = ?, sect_id = ?, sect_name = ?,
-            hp = ?, max_hp = ?, attack = ?, defense = ?
+            hp = ?, max_hp = ?, attack = ?, defense = ?, 
+            realm_id = ?, realm_floor = ?
         WHERE user_id = ?
     """, (
         player.level, player.spiritual_root, player.experience, player.gold,
         player.last_check_in, player.state, player.state_start_time,
         player.sect_id, player.sect_name, player.hp, player.max_hp,
-        player.attack, player.defense, player.user_id
+        player.attack, player.defense, player.realm_id, player.realm_floor,
+        player.user_id
     ))
     await _db_connection.commit()
 
