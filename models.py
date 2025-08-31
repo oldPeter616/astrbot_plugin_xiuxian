@@ -21,7 +21,6 @@ class Player:
     max_hp: int = 100
     attack: int = 10
     defense: int = 5
-    # 新增字段，用于秘境持久化
     realm_id: Optional[str] = None
     realm_floor: int = 0
 
@@ -47,14 +46,3 @@ class Monster:
     attack: int
     defense: int
     rewards: dict
-
-@dataclass
-class RealmSession:
-    """封装一次秘境探索的状态"""
-    player_id: str
-    realm_id: str
-    realm_name: str
-    current_floor: int = 0
-    total_floors: int = 5
-    gained_rewards: Dict[str, Any] = field(default_factory=lambda: {"gold": 0, "experience": 0, "items": {}})
-    log: List[str] = field(default_factory=list)

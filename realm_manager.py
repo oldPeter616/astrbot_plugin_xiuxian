@@ -1,94 +1,100 @@
 # realm_manager.py
+# 秘境探索管理器 (已重构为无状态)
 
 import random
-import asyncio
-from typing import Dict, Optional, Tuple, List
+from typing import Tuple, Dict
 from copy import deepcopy
 
-from .models import Player, Monster, RealmSession
+from .models import Player, Monster
 from .config_manager import config
-from . import combat_manager, data_manager
+from . import combat_manager
 
 class RealmManager:
-    def __init__(self):
-        # 注意：会话仍存储在内存中。持久化是下一步优化的目标。
-        self.sessions: Dict[str, RealmSession] = {}
 
-    def get_session(self, user_id: str) -> Optional[RealmSession]:
-        return self.sessions.get(user_id)
-
-    def start_session(self, player: Player, realm_id: str) -> Tuple[bool, str]:
-        if self.get_session(player.user_id):
-            return False, "你已身在秘境之中，无法分心他顾。"
-        
+    def start_session(self, player: Player, realm_id: str) -> Tuple[bool, str, Player]:
+        """
+        开始一次秘境探索，直接修改并返回玩家对象。
+        返回: (是否成功, 消息, 更新后的玩家对象)
+        """
+        p = deepcopy(player)
         realm_config = config.realm_data.get(realm_id)
         if not realm_config:
-            return False, "不存在的秘境。"
+            return False, "不存在的秘境。", p
+
+        if p.realm_id is not None:
+             current_realm_name = config.realm_data.get(p.realm_id, {}).get("name", "未知的秘境")
+             return False, f"你已身在【{current_realm_name}】之中，无法分心他顾。", p
 
         cost = realm_config['entry_cost']['gold']
-        if player.gold < cost:
-            return False, f"进入此秘境需要 {cost} 灵石，你的灵石不足。"
+        if p.gold < cost:
+            return False, f"进入此秘境需要 {cost} 灵石，你的灵石不足。", p
         
-        player_level_idx = config.level_map.get(player.level, {}).get("index", -1)
+        player_level_idx = config.level_map.get(p.level, {}).get("index", -1)
         req_level_idx = config.level_map.get(realm_config['level_requirement'], {}).get("index", 999)
         if player_level_idx < req_level_idx:
-            return False, f"你的境界（{player.level}）未达到进入【{realm_config['name']}】所需的（{realm_config['level_requirement']}）！"
+            return False, f"你的境界（{p.level}）未达到进入【{realm_config['name']}】所需的（{realm_config['level_requirement']}）！", p
         
-        player.gold -= cost
+        p.gold -= cost
+        p.realm_id = realm_id
+        p.realm_floor = 0
         
-        session = RealmSession(
-            player_id=player.user_id,
-            realm_id=realm_id,
-            realm_name=realm_config['name'],
-            total_floors=realm_config['total_floors']
-        )
-        self.sessions[player.user_id] = session
-        
-        msg = (f"你消耗了 {cost} 灵石，进入了【{session.realm_name}】。\n"
-               f"此地共有 {session.total_floors} 层，充满了未知的危险与机遇。\n"
+        msg = (f"你消耗了 {cost} 灵石，进入了【{realm_config['name']}】。\n"
+               f"此地共有 {realm_config['total_floors']} 层，充满了未知的危险与机遇。\n"
                f"使用「{config.CMD_REALM_ADVANCE}」指令向前探索。")
-        return True, msg
+        return True, msg, p
 
-    async def advance_session(self, player: Player) -> Tuple[bool, str, Player]:
-        """处理前进逻辑，返回是否成功，消息，以及更新后的玩家对象"""
-        session = self.get_session(player.user_id)
-        if not session:
-            return False, "你不在任何秘境中。", player
+    async def advance_session(self, player: Player) -> Tuple[bool, str, Player, Dict]:
+        """
+        处理前进逻辑。
+        返回: (是否成功, 消息, 更新后的玩家对象, 获得的物品字典)
+        """
+        if not player.realm_id:
+            return False, "你不在任何秘境中。", player, {}
 
-        session.current_floor += 1
+        p = deepcopy(player)
+        realm_config = config.realm_data[p.realm_id]
+        total_floors = realm_config['total_floors']
         
-        # 判断是否为最终头目战 (在最后一层触发)
-        is_boss_floor = session.current_floor == session.total_floors
+        p.realm_floor += 1
+        
+        is_boss_floor = p.realm_floor == total_floors
+        gained_items = {}
         
         if is_boss_floor:
-            event_log = [f"--- 第 {session.current_floor}/{session.total_floors} 层 ---"]
-            realm_config = config.realm_data.get(session.realm_id)
+            event_log = [f"--- 第 {p.realm_floor}/{total_floors} 层 (最终挑战) ---"]
             boss_id = realm_config['boss_id']
             monster_config = config.monster_data.get(boss_id)
             enemy = Monster(id=boss_id, **monster_config, max_hp=monster_config['hp'])
             
-            victory, combat_log, updated_player = await combat_manager.player_vs_monster(player, enemy)
+            victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
             event_log.extend(combat_log)
 
             if victory:
-                event_log.append(f"成功击败最终头目，你完成了【{session.realm_name}】的探索！")
-                self._apply_rewards(session, enemy.rewards)
+                rewards = self._get_rewards(enemy.rewards)
+                p_after_combat.gold += rewards['gold']
+                p_after_combat.experience += rewards['experience']
+                gained_items = rewards['items']
+                event_log.append(f"\n成功击败最终头目！你通关了【{realm_config['name']}】！")
+                reward_text = []
+                if rewards['gold'] > 0: reward_text.append(f"灵石+{rewards['gold']}")
+                if rewards['experience'] > 0: reward_text.append(f"修为+{rewards['experience']}")
+                if reward_text: event_log.append(f"获得奖励：" + ", ".join(reward_text))
             else:
-                event_log.append(f"挑战失败！你被传送出了秘境，一无所获。")
+                event_log.append(f"\n挑战失败！你被传送出了秘境。")
+            
+            p_after_combat.realm_id = None
+            p_after_combat.realm_floor = 0
+            return victory, "\n".join(event_log), p_after_combat, gained_items
 
-            # 无论胜败，都结束会话
-            self.end_session(player.user_id)
-            return victory, "\n".join(event_log), updated_player
-        
-        # --- 普通楼层事件 ---
-        realm_config = config.realm_data[session.realm_id]
-        events_pool = config.realm_events.get(session.realm_id, {})
-        
+        event_log = [f"--- 第 {p.realm_floor}/{total_floors} 层 ---"]
+        events_pool = config.realm_events.get(p.realm_id, {})
         event_types = list(events_pool.keys())
-        event_weights = [sum(e['weight'] for e in events_pool[t]) for t in event_types]
-        chosen_event_type = random.choices(event_types, weights=event_weights, k=1)[0]
+        event_weights = [sum(e.get('weight', 0) for e in events_pool.get(t, [])) for t in event_types]
         
-        event_log = [f"--- 第 {session.current_floor}/{session.total_floors} 层 ---"]
+        if not any(w > 0 for w in event_weights):
+             return True, "\n".join(event_log) + "\n此地异常安静，你谨慎地探索着，未发生任何事。", p, {}
+
+        chosen_event_type = random.choices(event_types, weights=event_weights, k=1)[0]
         
         if chosen_event_type == "monster" and events_pool.get('monster'):
             chosen_monster_event = random.choice(events_pool['monster'])
@@ -96,41 +102,37 @@ class RealmManager:
             monster_config = config.monster_data[monster_id]
             enemy = Monster(id=monster_id, **monster_config, max_hp=monster_config['hp'])
             
-            victory, combat_log, updated_player = await combat_manager.player_vs_monster(player, enemy)
+            victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
             event_log.extend(combat_log)
+            p = p_after_combat
 
             if victory:
-                self._apply_rewards(session, enemy.rewards)
-                if session.current_floor == session.total_floors - 1:
-                     event_log.append("\n前方气息强大，似乎就是此行的终点！再次「前进」以发起最终挑战！")
-                else:
-                    event_log.append("你继续向深处走去...")
-                return True, "\n".join(event_log), updated_player
+                rewards = self._get_rewards(enemy.rewards)
+                p.gold += rewards['gold']
+                p.experience += rewards['experience']
+                gained_items = rewards['items']
             else:
-                event_log.append("探索失败！你被传送出了秘境，一无所获。")
-                self.end_session(player.user_id)
-                return False, "\n".join(event_log), updated_player
+                p.realm_id = None
+                p.realm_floor = 0
+            return victory, "\n".join(event_log), p, gained_items
         
         elif chosen_event_type == "treasure" and events_pool.get('treasure'):
             chosen_treasure_event = random.choice(events_pool['treasure'])
-            self._apply_rewards(session, chosen_treasure_event['rewards'])
-            event_log.append("你发现了一个宝箱，获得了一些资源！")
+            rewards = self._get_rewards(chosen_treasure_event['rewards'])
+            p.gold += rewards['gold']
+            p.experience += rewards['experience']
+            gained_items = rewards['items']
+            event_log.append("你发现了一个宝箱，收获颇丰！")
+            return True, "\n".join(event_log), p, gained_items
             
-            if session.current_floor == session.total_floors - 1:
-                event_log.append("\n前方气息强大，似乎就是此行的终点！再次「前进」以发起最终挑战！")
-            else:
-                event_log.append("你继续向深处走去...")
-            return True, "\n".join(event_log), player # 宝箱不改变玩家状态，直接返回
-            
-        return True, "\n".join(event_log) + "\n似乎什么都没有发生，你继续前进。", player
+        return True, "\n".join(event_log) + "\n你谨慎地探索着，未发生任何事。", p, {}
 
-    def _apply_rewards(self, session: RealmSession, rewards: dict):
-        """应用奖励到会话的gained_rewards中"""
-        session.gained_rewards["gold"] += rewards.get("gold", 0)
-        session.gained_rewards["experience"] += rewards.get("experience", 0)
-        for item_id, drop_rate in rewards.get("items", {}).items():
+    def _get_rewards(self, rewards_config: dict) -> dict:
+        """根据配置计算本次获得的具体奖励"""
+        gained = {"gold": 0, "experience": 0, "items": {}}
+        gained["gold"] = rewards_config.get("gold", 0)
+        gained["experience"] = rewards_config.get("experience", 0)
+        for item_id, drop_rate in rewards_config.get("items", {}).items():
             if random.random() < drop_rate:
-                session.gained_rewards["items"][item_id] = session.gained_rewards["items"].get(item_id, 0) + 1
-
-    def end_session(self, user_id: str) -> Optional[RealmSession]:
-        return self.sessions.pop(user_id, None)
+                gained["items"][item_id] = gained["items"].get(item_id, 0) + 1
+        return gained

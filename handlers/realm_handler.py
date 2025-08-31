@@ -38,9 +38,11 @@ class RealmHandler:
             yield event.plain_result(f"未找到名为【{realm_name}】的秘境。")
             return
             
-        success, msg = realm_manager.start_session(player, target_realm_id)
+        success, msg, updated_player = realm_manager.start_session(player, target_realm_id)
+        
         if success:
-            await data_manager.update_player(player)
+            await data_manager.update_player(updated_player)
+            
         yield event.plain_result(msg)
         
     @filter.command(config.CMD_REALM_ADVANCE, "在秘境中前进")
@@ -48,38 +50,42 @@ class RealmHandler:
     async def handle_realm_advance(self, event: AstrMessageEvent):
         player: Player = event.player
         realm_manager = event.realm_manager
+
+        if not player.realm_id:
+            yield event.plain_result("你不在任何秘境中，无法前进。")
+            return
             
-        success, msg, updated_player = await realm_manager.advance_session(player)
+        success, msg, updated_player, gained_items = await realm_manager.advance_session(player)
         
-        # 战斗或事件结束后，无论成功失败，都同步一次最新状态到数据库
+        # 将获得的物品添加到背包
+        if gained_items:
+            item_log = []
+            for item_id, qty in gained_items.items():
+                await data_manager.add_item_to_inventory(player.user_id, item_id, qty)
+                item_name = config.item_data.get(item_id, {}).get("name", "未知物品")
+                item_log.append(f"【{item_name}】x{qty}")
+            if item_log:
+                msg += "\n获得物品：" + ", ".join(item_log)
+
+        # 核心：无论成功失败，都将返回的最新玩家状态保存
         await data_manager.update_player(updated_player)
+        
         yield event.plain_result(msg)
 
     @filter.command(config.CMD_LEAVE_REALM, "离开当前秘境")
     @player_required
     async def handle_leave_realm(self, event: AstrMessageEvent):
         player: Player = event.player
-        realm_manager = event.realm_manager
-        session = realm_manager.end_session(player.user_id)
         
-        if not session:
+        if not player.realm_id:
             yield event.plain_result("你不在任何秘境中。")
             return
             
-        rewards = session.gained_rewards
-        player.gold += rewards.get('gold', 0)
-        player.experience += rewards.get('experience', 0)
+        realm_name = config.realm_data.get(player.realm_id, {}).get("name", "未知的秘境")
         
-        reward_log = f"你离开了【{session.realm_name}】，本次探索收获如下：\n"
-        reward_log += f" - 灵石: {rewards.get('gold', 0)}\n"
-        reward_log += f" - 修为: {rewards.get('experience', 0)}\n"
-        
-        if items := rewards.get('items'):
-            reward_log += " - 物品:\n"
-            for item_id, qty in items.items():
-                await data_manager.add_item_to_inventory(player.user_id, item_id, qty)
-                item_name = config.item_data.get(item_id, {}).get("name", "未知物品")
-                reward_log += f"   - 【{item_name}】x{qty}\n"
-        
+        # 核心：直接修改玩家状态并保存
+        player.realm_id = None
+        player.realm_floor = 0
         await data_manager.update_player(player)
-        yield event.plain_result(reward_log)
+        
+        yield event.plain_result(f"你已从【{realm_name}】中脱离，回到了大千世界。中途退出不会获得任何奖励。")
