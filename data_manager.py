@@ -3,7 +3,7 @@
 
 import aiosqlite
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
@@ -39,6 +39,13 @@ async def close_db_pool():
 
 async def migrate_database():
     """检查并执行数据库迁移"""
+    # 定义迁移任务
+    migration_tasks: Dict[int, Callable[[], Awaitable[None]]] = {
+        2: _upgrade_v1_to_v2,
+        3: _upgrade_v2_to_v3,
+        4: _upgrade_v3_to_v4,
+    }
+
     async with _db_connection.execute("PRAGMA foreign_keys = ON"):
         pass
 
@@ -54,16 +61,17 @@ async def migrate_database():
     current_version = 0
     async with _db_connection.execute("SELECT version FROM db_info") as cursor:
         row = await cursor.fetchone()
-        if row:
-            current_version = row[0]
+        if row: current_version = row[0]
 
     logger.info(f"当前数据库版本: v{current_version}, 最新版本: v{LATEST_DB_VERSION}")
 
     if current_version < LATEST_DB_VERSION:
         logger.info("检测到数据库需要升级...")
-        if current_version < 2: await _upgrade_v1_to_v2(); current_version = 2
-        if current_version < 3: await _upgrade_v2_to_v3(); current_version = 3
-        if current_version < 4: await _upgrade_v3_to_v4()
+        # 按版本顺序执行所有必要的迁移
+        for version in sorted(migration_tasks.keys()):
+            if current_version < version:
+                await migration_tasks[version]()
+                current_version = version
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")
@@ -156,12 +164,18 @@ async def get_player_by_id(user_id: str) -> Optional[Player]:
         return Player(**dict(row)) if row else None
 
 async def create_player(player: Player):
+    """创建新玩家 (使用安全的参数传递方式)"""
     await _db_connection.execute("""
         INSERT INTO players (user_id, level, spiritual_root, experience, gold, 
                              last_check_in, state, state_start_time, sect_id, 
                              sect_name, hp, max_hp, attack, defense, realm_id, realm_floor)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, tuple(player.__dict__.values()))
+    """, (
+        player.user_id, player.level, player.spiritual_root, player.experience,
+        player.gold, player.last_check_in, player.state, player.state_start_time,
+        player.sect_id, player.sect_name, player.hp, player.max_hp,
+        player.attack, player.defense, player.realm_id, player.realm_floor
+    ))
     await _db_connection.commit()
 
 async def update_player(player: Player):

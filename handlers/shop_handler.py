@@ -23,12 +23,12 @@ class ShopHandler:
 
     @filter.command(config.CMD_BACKPACK, "查看你的背包")
     @player_required
-    async def handle_backpack(self, event: AstrMessageEvent):
-        inventory = await data_manager.get_inventory_by_user_id(event.player.user_id)
+    async def handle_backpack(self, event: AstrMessageEvent, player: Player):
+        inventory = await data_manager.get_inventory_by_user_id(player.user_id)
         if not inventory:
             yield event.plain_result("道友的背包空空如也。")
             return
-        
+
         reply_msg = f"--- {event.get_sender_name()} 的背包 ---\n"
         for item in inventory:
             reply_msg += f"【{item['name']}】x{item['quantity']} - {item['description']}\n"
@@ -37,8 +37,7 @@ class ShopHandler:
 
     @filter.command(config.CMD_BUY, "购买物品")
     @player_required
-    async def handle_buy(self, event: AstrMessageEvent):
-        player: Player = event.player
+    async def handle_buy(self, event: AstrMessageEvent, player: Player):
         parts = event.message_str.strip().split(maxsplit=2)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_BUY} <物品名> [数量]」。")
@@ -56,7 +55,7 @@ class ShopHandler:
 
         item_id_to_add, target_item_info = item_to_buy
         total_cost = target_item_info['price'] * quantity
-        
+
         success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
@@ -69,8 +68,7 @@ class ShopHandler:
 
     @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
     @player_required
-    async def handle_use(self, event: AstrMessageEvent):
-        player: Player = event.player
+    async def handle_use(self, event: AstrMessageEvent, player: Player):
         parts = event.message_str.strip().split(maxsplit=2)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_USE_ITEM} <物品名> [数量]」。")
@@ -85,9 +83,9 @@ class ShopHandler:
         if not item_to_use:
             yield event.plain_result(f"背包中似乎没有名为「{item_name}」的物品。")
             return
-        
+
         target_item_id, _ = item_to_use
-        
+
         effect, msg = xiuxian_logic.calculate_item_effect(target_item_id, quantity)
         if not effect:
             yield event.plain_result(msg)

@@ -93,7 +93,6 @@ class RealmManager:
         """处理普通楼层事件"""
         event_log = [f"--- 第 {p.realm_floor}/{realm_config['total_floors']} 层 ---"]
         
-        # 将所有事件扁平化处理
         all_events = realm_config.get("events", [])
         if not all_events:
             event_log.append("此地异常安静，你谨慎地探索着，未发生任何事。")
@@ -102,21 +101,21 @@ class RealmManager:
         events = [e for e in all_events if e.get('weight', 0) > 0]
         weights = [e.get('weight', 0) for e in events]
         
-        if not events or not any(weights):
+        # 增强检查，确保权总重大于0
+        if not events or sum(weights) <= 0:
             event_log.append("空气中弥漫着一股凝滞的气息，但什么也没发生。")
             return True, "\n".join(event_log), p, {}
         
-        # 根据权重随机选择一个事件
         chosen_event = random.choices(events, weights=weights, k=1)[0]
         event_type = chosen_event.get("type")
 
         if event_type == "monster":
             return await self._handle_monster_event(p, event_log, chosen_event)
-
         if event_type == "treasure":
             return self._handle_treasure_event(p, event_log, chosen_event)
 
         return True, "\n".join(event_log) + "\n你谨慎地探索着，未发生任何事。", p, {}
+
 
     async def _handle_monster_event(self, p: Player, event_log: list, monster_event: dict) -> Tuple[bool, str, Player, Dict]:
         """处理遭遇怪物事件"""

@@ -161,6 +161,7 @@ class BattleManager:
         return status
 
 async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
+    """处理玩家切磋的逻辑 (使用副本)"""
     p1 = attacker.clone()
     p2 = defender.clone()
     
@@ -173,25 +174,25 @@ async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional
         damage_to_p2 = max(1, p1.attack - p2.defense)
         p2.hp -= damage_to_p2
         combat_log.append(f"{p1.user_id[-4:]} 对 {p2.user_id[-4:]} 造成了 {damage_to_p2} 点伤害。")
-        combat_log.append(f"❤️{p2.user_id[-4:]} 剩余生命: {p2.hp}/{p2.max_hp}")
         
         if p2.hp <= 0:
+            combat_log.append(f"❤️{p2.user_id[-4:]} 剩余生命: 0/{p2.max_hp}")
             combat_log.append(f"\n🏆【切磋结束】{p1.user_id[-4:]} 获胜！")
             return attacker, defender, combat_log
 
-        await asyncio.sleep(0)
+        combat_log.append(f"❤️{p2.user_id[-4:]} 剩余生命: {p2.hp}/{p2.max_hp}")
 
         damage_to_p1 = max(1, p2.attack - p1.defense)
         p1.hp -= damage_to_p1
         combat_log.append(f"{p2.user_id[-4:]} 对 {p1.user_id[-4:]} 造成了 {damage_to_p1} 点伤害。")
-        combat_log.append(f"❤️{p1.user_id[-4:]} 剩余生命: {p1.hp}/{p1.max_hp}")
 
         if p1.hp <= 0:
+            combat_log.append(f"❤️{p1.user_id[-4:]} 剩余生命: 0/{p1.max_hp}")
             combat_log.append(f"\n🏆【切磋结束】{p2.user_id[-4:]} 获胜！")
             return defender, attacker, combat_log
-            
+        
+        combat_log.append(f"❤️{p1.user_id[-4:]} 剩余生命: {p1.hp}/{p1.max_hp}")
         turn += 1
-        await asyncio.sleep(0)
 
     if turn > max_turns:
         combat_log.append("\n【平局】双方大战三十回合，未分胜负！")
@@ -199,12 +200,9 @@ async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional
     return None, None, combat_log
 
 async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str], Player]:
-    """
-    处理玩家 vs 普通怪物的战斗。
-    返回: (是否胜利, 战斗日志, 战斗后的玩家状态副本)
-    """
-    p = player.clone()
+    """处理玩家 vs 普通怪物的战斗。"""
     log = [f"你遭遇了【{monster.name}】！"]
+    p = player.clone()
     monster_hp = monster.hp
 
     while p.hp > 0 and monster_hp > 0:
@@ -216,16 +214,13 @@ async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, Lis
             log.append(f"你成功击败了【{monster.name}】！")
             return True, log, p
 
-        await asyncio.sleep(0)
-
         damage_to_player = max(1, monster.attack - p.defense)
         p.hp -= damage_to_player
         log.append(f"【{monster.name}】对你造成了 {damage_to_player} 点伤害。")
 
     if p.hp <= 0:
         log.append("你不敌对手，重伤倒地...")
-        p.hp = 1 # 战斗失败后保留1点生命
+        p.hp = 1
         return False, log, p
     
-    # 理论上不会到达这里，但在循环外返回以防万一
     return False, log, p
