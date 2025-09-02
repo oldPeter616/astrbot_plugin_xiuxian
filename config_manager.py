@@ -20,20 +20,20 @@ class Config:
             "realm": base_dir / "realms.json"
         }
 
-        # --- 数据容器 (显式声明) ---
+        # --- 数据容器 ---
         self.level_data: List[dict] = []
         self.item_data: Dict[str, dict] = {}
         self.boss_data: Dict[str, dict] = {}
         self.monster_data: Dict[str, dict] = {}
         self.realm_data: Dict[str, dict] = {}
         
-        # --- 预处理数据容器 (显式声明) ---
+        # --- 预处理数据映射 ---
         self.level_map: Dict[str, dict] = {}
-        self.realm_events: Dict[str, Dict[str, list]] = {}
         self.item_name_to_id: Dict[str, str] = {}
         self.realm_name_to_id: Dict[str, str] = {}
+        self.boss_name_to_id: Dict[str, str] = {}
 
-        # --- 可配置属性 (显式声明并设置默认值) ---
+        # --- 可配置属性 (带默认值) ---
         # 指令
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
@@ -77,8 +77,8 @@ class Config:
     def _load_json_data(self, file_path: Path, attribute_name: str, log_name: str) -> bool:
         """通用JSON数据文件加载器"""
         if not file_path.exists():
-            logger.warning(f"{log_name}数据文件 {file_path} 不存在，跳过加载。")
-            setattr(self, attribute_name, {}) # 确保属性存在
+            logger.warning(f"{log_name}数据文件 {file_path} 不存在，将使用默认值。")
+            setattr(self, attribute_name, {} if 'data' in attribute_name else [])
             return False
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -86,32 +86,28 @@ class Config:
                 setattr(self, attribute_name, data)
                 logger.info(f"成功加载 {len(data)} 条 {log_name} 数据。")
                 return True
-        except json.JSONDecodeError as e:
-            logger.error(f"加载{log_name}数据文件 {file_path} 失败：JSON格式错误 - {e}")
         except Exception as e:
-            logger.error(f"加载{log_name}数据文件 {file_path} 时发生未知错误: {e}")
+            logger.error(f"加载 {log_name} 数据文件 {file_path} 失败: {e}")
         return False
 
     def load(self):
-        """显式加载所有配置文件并进行后处理"""
-        # 加载主配置文件
+        """加载所有配置文件并进行后处理"""
         if self._paths["config"].exists():
             try:
                 with open(self._paths["config"], 'r', encoding='utf-8') as f:
                     main_cfg = json.load(f)
                 
-                # 安全地更新已声明的属性
-                for category in ("COMMANDS", "VALUES", "FILES", "RULES"):
-                    if category in main_cfg:
-                        for key, value in main_cfg[category].items():
-                            if hasattr(self, key):
-                                setattr(self, key, value)
-                            else:
-                                logger.warning(f"主配置文件中的未知配置项 '{key}' 将被忽略。")
+                # 安全地更新所有已声明的属性
+                for category_name, category_data in main_cfg.items():
+                    for key, value in category_data.items():
+                        if hasattr(self, key):
+                            setattr(self, key, value)
+                        else:
+                            logger.warning(f"主配置文件中的未知配置项 '{key}' 将被忽略。")
                 logger.info("成功加载主配置文件 config.json。")
             except Exception as e:
                 logger.error(f"加载主配置文件 config.json 失败: {e}")
-
+        
         # 加载其他数据文件
         self._load_json_data(self._paths["level"], "level_data", "境界")
         self._load_json_data(self._paths["item"], "item_data", "物品")
@@ -119,37 +115,34 @@ class Config:
         self._load_json_data(self._paths["monster"], "monster_data", "怪物")
         self._load_json_data(self._paths["realm"], "realm_data", "秘境")
 
-        # 数据后处理
         self._post_process_data()
 
     def _post_process_data(self):
-        """预处理所有数据，建立映射以优化性能"""
+        """预处理所有数据，建立名称到ID的映射以优化性能"""
         # 境界数据
-        for i, level_info in enumerate(self.level_data):
-            if level_name := level_info.get("level_name"):
-                self.level_map[level_name] = {"index": i, **level_info}
+        self.level_map = {info["level_name"]: {"index": i, **info} 
+                          for i, info in enumerate(self.level_data) if "level_name" in info}
         # 物品数据
-        for item_id, info in self.item_data.items():
-            if name := info.get("name"):
-                self.item_name_to_id[name] = item_id
+        self.item_name_to_id = {info["name"]: item_id 
+                                for item_id, info in self.item_data.items() if "name" in info}
         # 秘境数据
-        for realm_id, realm_info in self.realm_data.items():
-            if name := realm_info.get("name"):
-                self.realm_name_to_id[name] = realm_id
-            
-            self.realm_events[realm_id] = {'monster': [], 'treasure': []}
-            for event in realm_info.get("events", []):
-                if event_type := event.get('type'):
-                    if event_type in self.realm_events[realm_id]:
-                        self.realm_events[realm_id][event_type].append(event)
+        self.realm_name_to_id = {info["name"]: realm_id 
+                                 for realm_id, info in self.realm_data.items() if "name" in info}
+        # Boss数据
+        self.boss_name_to_id = {info["name"]: boss_id 
+                                for boss_id, info in self.boss_data.items() if "name" in info}
 
     def get_item_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
         item_id = self.item_name_to_id.get(name)
-        return (item_id, self.item_data.get(item_id)) if item_id else None
+        return (item_id, self.item_data[item_id]) if item_id else None
 
     def get_realm_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
         realm_id = self.realm_name_to_id.get(name)
-        return (realm_id, self.realm_data.get(realm_id)) if realm_id else None
+        return (realm_id, self.realm_data[realm_id]) if realm_id else None
+
+    def get_boss_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
+        boss_id = self.boss_name_to_id.get(name)
+        return (boss_id, self.boss_data[boss_id]) if boss_id else None
 
 # 全局配置实例
 _current_dir = Path(__file__).parent

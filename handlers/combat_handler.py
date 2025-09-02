@@ -37,7 +37,8 @@ class CombatHandler:
             yield event.plain_result("对方气血不满，此时挑战非君子所为。")
             return
 
-        report = await xiuxian_logic.handle_pvp(attacker, defender)
+        # 调用已改为同步的函数
+        report = xiuxian_logic.handle_pvp(attacker, defender)
         yield event.plain_result(report)
 
     @filter.command(config.CMD_START_BOSS_FIGHT, "开启一场世界Boss讨伐战")
@@ -48,15 +49,14 @@ class CombatHandler:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_START_BOSS_FIGHT} <Boss名>」。")
             return
 
-        target_boss_config = None
-        for boss_id, info in config.boss_data.items():
-            if info['name'] == boss_name:
-                target_boss_config = {'id': boss_id, **info}
-                break
-
-        if not target_boss_config:
+        # 使用O(1)查找
+        boss_found = config.get_boss_by_name(boss_name)
+        if not boss_found:
             yield event.plain_result(f"未找到名为【{boss_name}】的Boss。")
             return
+        
+        boss_id, boss_info = boss_found
+        target_boss_config = {'id': boss_id, **boss_info}
 
         success, msg = await self.battle_manager.start_battle(target_boss_config)
         yield event.plain_result(msg)

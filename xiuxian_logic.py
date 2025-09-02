@@ -101,7 +101,7 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
     
     if random.random() < success_rate:
         player.level = next_level_info['level_name']
-        player.experience = 0 # 突破后修为清零或保留多余部分，此处为清零
+        player.experience = 0 # 突破后修为清零
         
         new_stats = _calculate_base_stats(current_level_index + 1)
         player.hp = new_stats['hp']
@@ -204,8 +204,9 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-async def handle_pvp(attacker: Player, defender: Player) -> str:
+def handle_pvp(attacker: Player, defender: Player) -> str:
     """处理PVP逻辑，并返回战报"""
-    _, _, combat_log = await combat_manager.player_vs_player(attacker, defender)
+    # 直接调用同步函数，不再需要await
+    _, _, combat_log = combat_manager.player_vs_player(attacker, defender)
     report = "\n".join(combat_log)
     return report

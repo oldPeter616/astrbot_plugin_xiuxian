@@ -19,8 +19,6 @@ DB_PATH = DATA_DIR / config.DATABASE_FILE
 LATEST_DB_VERSION = 4
 
 # --- 迁移任务注册表 ---
-# key: 目标版本号
-# value: 升级到该版本需要执行的函数
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection], Awaitable[None]]] = {}
 
 def migration(version: int):
@@ -29,7 +27,6 @@ def migration(version: int):
         MIGRATION_TASKS[version] = func
         return func
     return decorator
-
 
 # --- 连接核心 ---
 _db_connection: Optional[aiosqlite.Connection] = None
@@ -53,29 +50,25 @@ async def close_db_pool():
 
 async def migrate_database():
     """检查并执行数据库迁移"""
-    async with _db_connection.execute("PRAGMA foreign_keys = ON"):
-        pass
+    await _db_connection.execute("PRAGMA foreign_keys = ON")
 
-    cursor = await _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'")
-    if await cursor.fetchone() is None:
-        logger.info("未检测到数据库版本，将进行全新安装...")
-        await _create_all_tables_v4(_db_connection)
-        await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
-        await _db_connection.commit()
-        logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
-        return
-    await cursor.close()
+    async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
+        if await cursor.fetchone() is None:
+            logger.info("未检测到数据库版本，将进行全新安装...")
+            await _create_all_tables_v4(_db_connection)
+            await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
+            await _db_connection.commit()
+            logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
+            return
 
-    cursor = await _db_connection.execute("SELECT version FROM db_info")
-    row = await cursor.fetchone()
-    current_version = row[0] if row else 0
-    await cursor.close()
+    async with _db_connection.execute("SELECT version FROM db_info") as cursor:
+        row = await cursor.fetchone()
+        current_version = row[0] if row else 0
     
     logger.info(f"当前数据库版本: v{current_version}, 最新版本: v{LATEST_DB_VERSION}")
 
     if current_version < LATEST_DB_VERSION:
         logger.info("检测到数据库需要升级...")
-        # 按版本号排序并执行所有必要的迁移
         for version in sorted(MIGRATION_TASKS.keys()):
             if current_version < version:
                 logger.info(f"正在执行数据库升级: v{current_version} -> v{version} ...")
@@ -87,7 +80,7 @@ async def migrate_database():
                     current_version = version
                 except Exception as e:
                     logger.error(f"数据库 v{current_version} -> v{version} 升级失败，已回滚: {e}", exc_info=True)
-                    raise  # 升级失败时应中断程序
+                    raise
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")

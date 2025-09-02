@@ -126,8 +126,6 @@ class BattleManager:
                 player.gold += int(boss.rewards['gold'] * damage_contribution)
                 player.experience += int(boss.rewards['experience'] * damage_contribution)
                 
-                # ... (reward logging remains the same)
-                
                 updated_players.append(player)
 
             loop = asyncio.get_running_loop()
@@ -160,8 +158,8 @@ class BattleManager:
             status += f" - 【{player.user_id[-4:]}】 ❤️{player.hp}/{player.max_hp} | ⚔️输出: {damage}\n"
         return status
 
-async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
-    """处理玩家切磋的逻辑 (使用副本)"""
+def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
+    """处理玩家切磋的逻辑 (同步函数)"""
     p1 = attacker.clone()
     p2 = defender.clone()
     
@@ -199,8 +197,8 @@ async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional
     
     return None, None, combat_log
 
-async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str], Player]:
-    """处理玩家 vs 普通怪物的战斗。"""
+def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, List[str], Player]:
+    """处理玩家 vs 普通怪物的战斗 (同步函数)"""
     log = [f"你遭遇了【{monster.name}】！"]
     p = player.clone()
     monster_hp = monster.hp
