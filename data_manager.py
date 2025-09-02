@@ -3,7 +3,7 @@
 
 import aiosqlite
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
@@ -285,7 +285,7 @@ async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int =
         logger.error(f"移除物品事务失败: {e}")
         return False
         
-async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> bool:
+async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> Tuple[bool, str]:
     """事务性地处理购买物品：扣款并添加物品，保证数据一致性"""
     try:
         async with _db_connection.transaction():
@@ -295,18 +295,17 @@ async def transactional_buy_item(user_id: str, item_id: str, quantity: int, tota
                 (total_cost, user_id, total_cost)
             )
             if cursor.rowcount == 0:
-                # 如果没有行被更新，说明余额不足，事务会自动回滚
-                return False
+                return False, "ERROR_INSUFFICIENT_FUNDS"
 
             # 2. 添加物品
             await _db_connection.execute("""
                 INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
                 ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
             """, (user_id, item_id, quantity))
-        return True
+        return True, "SUCCESS"
     except aiosqlite.Error as e:
         logger.error(f"购买物品事务失败: {e}")
-        return False
+        return False, "ERROR_DATABASE"
 
 async def transactional_apply_item_effect(user_id: str, item_id: str, quantity: int, effect: PlayerEffect) -> bool:
     """事务性地处理物品使用：扣除物品并应用效果"""

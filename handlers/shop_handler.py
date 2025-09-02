@@ -55,19 +55,18 @@ class ShopHandler:
         item_id_to_add, target_item_info = item_to_buy
         total_cost = target_item_info['price'] * quantity
         
-        # 预先检查余额，减少不必要的数据库事务
-        current_player = await data_manager.get_player_by_id(player.user_id)
-        if current_player.gold < total_cost:
-            yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{current_player.gold}。")
-            return
-
-        # 调用事务性操作
-        success = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
+        # 直接调用事务性操作，不再预先检查
+        success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
             yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。")
         else:
-            yield event.plain_result("购买失败，可能是灵石不足或坊市交易繁忙，请稍后再试。")
+            if reason == "ERROR_INSUFFICIENT_FUNDS":
+                 # 从内存中获取最新的玩家数据以显示准确的金钱
+                current_player = await data_manager.get_player_by_id(player.user_id)
+                yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{current_player.gold}。")
+            else:
+                yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
     @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
     @player_required

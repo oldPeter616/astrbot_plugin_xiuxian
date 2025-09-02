@@ -1,6 +1,6 @@
 import asyncio
 from astrbot.api.event import AstrMessageEvent, filter
-from .decorator import player_required
+from .decorator import player_required, managers_required
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -87,12 +87,8 @@ class CombatHandler:
                 await data_manager.update_player(p)
     
     @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")
+    @managers_required
     async def handle_fight_status(self, event: AstrMessageEvent):
-        # 此处 self.battle_manager 无法直接访问，需从 event 获取
-        # 但这是一个非 @player_required 的指令，我们需手动获取 manager
-        battle_manager = getattr(self, 'battle_manager', None)
-        if not battle_manager:
-            yield event.plain_result("战斗管理器未初始化！")
-            return
+        battle_manager = event.battle_manager
         status_report = battle_manager.get_status()
         yield event.plain_result(status_report)

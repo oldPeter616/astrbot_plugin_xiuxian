@@ -11,6 +11,9 @@ from .handlers import (
     CombatHandler, RealmHandler, MiscHandler
 )
 
+# --- 共享上下文，用于解耦 ---
+shared_context = {}
+
 # 移除 @register
 class XiuXianPlugin(Star,
                    PlayerHandler,
@@ -31,6 +34,11 @@ class XiuXianPlugin(Star,
         try:
             config.load()
             await data_manager.init_db_pool()
+
+            # 将管理器实例注册到共享上下文中
+            shared_context['battle_manager'] = self.battle_manager
+            shared_context['realm_manager'] = self.realm_manager
+
             logger.info("修仙插件：数据库连接池初始化成功。")
             logger.info("修仙插件已加载，所有指令已通过装饰器自动注册。")
         except aiosqlite.Error as e:
@@ -44,4 +52,5 @@ class XiuXianPlugin(Star,
     async def terminate(self):
         """插件卸载/停用时调用，关闭数据库连接池"""
         await data_manager.close_db_pool()
+        shared_context.clear() # 清理上下文
         logger.info("修仙插件已卸载。")

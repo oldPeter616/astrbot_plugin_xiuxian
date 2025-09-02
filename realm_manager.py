@@ -3,8 +3,6 @@
 
 import random
 from typing import Tuple, Dict
-from copy import deepcopy
-
 from .models import Player, Monster
 from .config_manager import config
 from . import combat_manager
@@ -16,7 +14,7 @@ class RealmManager:
         开始一次秘境探索，直接修改并返回玩家对象。
         返回: (是否成功, 消息, 更新后的玩家对象)
         """
-        p = deepcopy(player)
+        p = player.clone()
         realm_config = config.realm_data.get(realm_id)
         if not realm_config:
             return False, "不存在的秘境。", p
@@ -51,7 +49,7 @@ class RealmManager:
         if not player.realm_id:
             return False, "你不在任何秘境中。", player, {}
 
-        p = deepcopy(player)
+        p = player.clone()
         realm_config = config.realm_data[p.realm_id]
 
         p.realm_floor += 1

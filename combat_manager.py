@@ -3,7 +3,6 @@
 
 import asyncio
 import random
-from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 from .models import Player, Boss, Monster
 from . import data_manager
@@ -192,8 +191,8 @@ class BattleManager:
 
 async def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
     """处理玩家切磋的逻辑 (使用副本)"""
-    p1 = deepcopy(attacker)
-    p2 = deepcopy(defender)
+    p1 = attacker.clone()
+    p2 = defender.clone()
     
     combat_log = [f"⚔️【切磋开始】{p1.user_id[-4:]} vs {p2.user_id[-4:]}！"]
     turn = 1
@@ -235,7 +234,7 @@ async def player_vs_monster(player: Player, monster: Monster) -> Tuple[bool, Lis
     返回: (是否胜利, 战斗日志, 战斗后的玩家状态副本)
     """
     log = [f"你遭遇了【{monster.name}】！"]
-    p = deepcopy(player) # 使用玩家对象的副本进行战斗
+    p = player.clone() # 使用玩家对象的副本进行战斗
     monster_hp = monster.hp
 
     while p.hp > 0 and monster_hp > 0:
