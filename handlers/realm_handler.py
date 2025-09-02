@@ -1,5 +1,6 @@
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
+from .parser import parse_args
 from .. import data_manager
 from ..config_manager import config
 from ..models import Player
@@ -22,13 +23,12 @@ class RealmHandler:
 
     @filter.command(config.CMD_ENTER_REALM, "进入秘境开始探索")
     @player_required
-    async def handle_enter_realm(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split(maxsplit=1)
-        if len(parts) < 2:
+    @parse_args(str)
+    async def handle_enter_realm(self, event: AstrMessageEvent, realm_name: str, player: Player):
+        if not realm_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_ENTER_REALM} <秘境名>」。")
             return
 
-        realm_name = parts[1]
         realm_found = config.get_realm_by_name(realm_name)
 
         if not realm_found:

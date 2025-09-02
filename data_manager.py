@@ -4,6 +4,7 @@
 import aiosqlite
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
+from dataclasses import fields
 
 from astrbot.api import logger
 from astrbot.api.star import StarTools
@@ -16,6 +17,19 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
 LATEST_DB_VERSION = 4
+
+# --- 迁移任务注册表 ---
+# key: 目标版本号
+# value: 升级到该版本需要执行的函数
+MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection], Awaitable[None]]] = {}
+
+def migration(version: int):
+    """注册数据库迁移任务的装饰器"""
+    def decorator(func: Callable[[aiosqlite.Connection], Awaitable[None]]):
+        MIGRATION_TASKS[version] = func
+        return func
+    return decorator
+
 
 # --- 连接核心 ---
 _db_connection: Optional[aiosqlite.Connection] = None
@@ -39,54 +53,57 @@ async def close_db_pool():
 
 async def migrate_database():
     """检查并执行数据库迁移"""
-    # 定义迁移任务
-    migration_tasks: Dict[int, Callable[[], Awaitable[None]]] = {
-        2: _upgrade_v1_to_v2,
-        3: _upgrade_v2_to_v3,
-        4: _upgrade_v3_to_v4,
-    }
-
     async with _db_connection.execute("PRAGMA foreign_keys = ON"):
         pass
 
-    async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
-        if await cursor.fetchone() is None:
-            logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v4()
-            await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
-            await _db_connection.commit()
-            logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
-            return
+    cursor = await _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'")
+    if await cursor.fetchone() is None:
+        logger.info("未检测到数据库版本，将进行全新安装...")
+        await _create_all_tables_v4(_db_connection)
+        await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
+        await _db_connection.commit()
+        logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
+        return
+    await cursor.close()
 
-    current_version = 0
-    async with _db_connection.execute("SELECT version FROM db_info") as cursor:
-        row = await cursor.fetchone()
-        if row: current_version = row[0]
-
+    cursor = await _db_connection.execute("SELECT version FROM db_info")
+    row = await cursor.fetchone()
+    current_version = row[0] if row else 0
+    await cursor.close()
+    
     logger.info(f"当前数据库版本: v{current_version}, 最新版本: v{LATEST_DB_VERSION}")
 
     if current_version < LATEST_DB_VERSION:
         logger.info("检测到数据库需要升级...")
-        # 按版本顺序执行所有必要的迁移
-        for version in sorted(migration_tasks.keys()):
+        # 按版本号排序并执行所有必要的迁移
+        for version in sorted(MIGRATION_TASKS.keys()):
             if current_version < version:
-                await migration_tasks[version]()
-                current_version = version
+                logger.info(f"正在执行数据库升级: v{current_version} -> v{version} ...")
+                try:
+                    async with _db_connection.transaction():
+                        await MIGRATION_TASKS[version](_db_connection)
+                        await _db_connection.execute("UPDATE db_info SET version = ?", (version,))
+                    logger.info(f"v{current_version} -> v{version} 升级成功！")
+                    current_version = version
+                except Exception as e:
+                    logger.error(f"数据库 v{current_version} -> v{version} 升级失败，已回滚: {e}", exc_info=True)
+                    raise  # 升级失败时应中断程序
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")
 
-async def _create_all_tables_v4():
+
+async def _create_all_tables_v4(conn: aiosqlite.Connection):
     """创建版本4（最新）的所有表结构"""
-    await _db_connection.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
-    await _db_connection.execute("""
+    await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS sects (
             id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
             leader_id TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
             funds INTEGER NOT NULL DEFAULT 0
         )
     """)
-    await _db_connection.execute("""
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
             user_id TEXT PRIMARY KEY, level TEXT NOT NULL, spiritual_root TEXT NOT NULL,
             experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
@@ -97,7 +114,7 @@ async def _create_all_tables_v4():
             FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
-    await _db_connection.execute("""
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
             item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
@@ -105,58 +122,37 @@ async def _create_all_tables_v4():
             UNIQUE(user_id, item_id)
         )
     """)
-    await _db_connection.commit()
 
-async def _upgrade_v1_to_v2():
-    logger.info("正在执行数据库升级: v1 -> v2 ...")
-    try:
-        async with _db_connection.transaction():
-            await _db_connection.execute("ALTER TABLE inventory RENAME TO inventory_old")
-            await _db_connection.execute("""
-                CREATE TABLE inventory (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
-                    item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES players (user_id),
-                    UNIQUE(user_id, item_id)
-                )
-            """)
-            await _db_connection.execute("INSERT INTO inventory (user_id, item_id, quantity) SELECT user_id, item_id, quantity FROM inventory_old")
-            await _db_connection.execute("DROP TABLE inventory_old")
-            await _db_connection.execute("UPDATE db_info SET version = 2")
-        logger.info("v1 -> v2 升级成功！")
-    except Exception as e:
-        logger.error(f"数据库 v1 -> v2 升级失败，已回滚: {e}", exc_info=True)
-        raise
+@migration(2)
+async def _upgrade_v1_to_v2(conn: aiosqlite.Connection):
+    await conn.execute("ALTER TABLE inventory RENAME TO inventory_old")
+    await conn.execute("""
+        CREATE TABLE inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
+            item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES players (user_id),
+            UNIQUE(user_id, item_id)
+        )
+    """)
+    await conn.execute("INSERT INTO inventory (user_id, item_id, quantity) SELECT user_id, item_id, quantity FROM inventory_old")
+    await conn.execute("DROP TABLE inventory_old")
 
-async def _upgrade_v2_to_v3():
-    logger.info("正在执行数据库升级: v2 -> v3 ...")
-    try:
-        async with _db_connection.transaction():
-            async with _db_connection.execute("PRAGMA table_info(players)") as cursor:
-                columns = [row['name'] for row in await cursor.fetchall()]
-            if 'hp' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN hp INTEGER NOT NULL DEFAULT 100")
-            if 'max_hp' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 100")
-            if 'attack' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN attack INTEGER NOT NULL DEFAULT 10")
-            if 'defense' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN defense INTEGER NOT NULL DEFAULT 5")
-            await _db_connection.execute("UPDATE db_info SET version = 3")
-        logger.info("v2 -> v3 升级成功！")
-    except Exception as e:
-        logger.error(f"数据库 v2 -> v3 升级失败，已回滚: {e}", exc_info=True)
-        raise
+@migration(3)
+async def _upgrade_v2_to_v3(conn: aiosqlite.Connection):
+    cursor = await conn.execute("PRAGMA table_info(players)")
+    columns = [row['name'] for row in await cursor.fetchall()]
+    if 'hp' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN hp INTEGER NOT NULL DEFAULT 100")
+    if 'max_hp' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 100")
+    if 'attack' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN attack INTEGER NOT NULL DEFAULT 10")
+    if 'defense' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN defense INTEGER NOT NULL DEFAULT 5")
 
-async def _upgrade_v3_to_v4():
-    logger.info("正在执行数据库升级: v3 -> v4 ...")
-    try:
-        async with _db_connection.transaction():
-            async with _db_connection.execute("PRAGMA table_info(players)") as cursor:
-                columns = [row['name'] for row in await cursor.fetchall()]
-            if 'realm_id' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN realm_id TEXT")
-            if 'realm_floor' not in columns: await _db_connection.execute("ALTER TABLE players ADD COLUMN realm_floor INTEGER NOT NULL DEFAULT 0")
-            await _db_connection.execute("UPDATE db_info SET version = 4")
-        logger.info("v3 -> v4 升级成功！")
-    except Exception as e:
-        logger.error(f"数据库 v3 -> v4 升级失败，已回滚: {e}", exc_info=True)
-        raise
+@migration(4)
+async def _upgrade_v3_to_v4(conn: aiosqlite.Connection):
+    cursor = await conn.execute("PRAGMA table_info(players)")
+    columns = [row['name'] for row in await cursor.fetchall()]
+    if 'realm_id' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN realm_id TEXT")
+    if 'realm_floor' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN realm_floor INTEGER NOT NULL DEFAULT 0")
+
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
     async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
@@ -164,59 +160,48 @@ async def get_player_by_id(user_id: str) -> Optional[Player]:
         return Player(**dict(row)) if row else None
 
 async def create_player(player: Player):
-    """创建新玩家 (使用安全的参数传递方式)"""
-    await _db_connection.execute("""
-        INSERT INTO players (user_id, level, spiritual_root, experience, gold, 
-                             last_check_in, state, state_start_time, sect_id, 
-                             sect_name, hp, max_hp, attack, defense, realm_id, realm_floor)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        player.user_id, player.level, player.spiritual_root, player.experience,
-        player.gold, player.last_check_in, player.state, player.state_start_time,
-        player.sect_id, player.sect_name, player.hp, player.max_hp,
-        player.attack, player.defense, player.realm_id, player.realm_floor
-    ))
+    """创建新玩家 (使用安全的具名参数)"""
+    # 获取Player dataclass的所有字段名
+    player_fields = [f.name for f in fields(Player)]
+    # 构建SQL语句
+    columns = ", ".join(player_fields)
+    placeholders = ", ".join([f":{f}" for f in player_fields])
+    sql = f"INSERT INTO players ({columns}) VALUES ({placeholders})"
+    
+    # 将player对象转为字典作为参数
+    await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
 
 async def update_player(player: Player):
-    await _db_connection.execute("""
-        UPDATE players
-        SET level = ?, spiritual_root = ?, experience = ?, gold = ?, last_check_in = ?, 
-            state = ?, state_start_time = ?, sect_id = ?, sect_name = ?,
-            hp = ?, max_hp = ?, attack = ?, defense = ?, 
-            realm_id = ?, realm_floor = ?
-        WHERE user_id = ?
-    """, (
-        player.level, player.spiritual_root, player.experience, player.gold,
-        player.last_check_in, player.state, player.state_start_time,
-        player.sect_id, player.sect_name, player.hp, player.max_hp,
-        player.attack, player.defense, player.realm_id, player.realm_floor,
-        player.user_id
-    ))
+    """更新单个玩家 (使用动态生成的SQL语句)"""
+    player_fields = [f.name for f in fields(Player) if f.name != 'user_id']
+    set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
+    sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
+
+    await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
+
 
 async def update_players_in_transaction(players: List[Player]):
     """在一个事务中批量更新多个玩家"""
+    if not players:
+        return
+        
+    player_fields = [f.name for f in fields(Player) if f.name != 'user_id']
+    set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
+    sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
+    
     try:
         async with _db_connection.transaction():
             for player in players:
-                await _db_connection.execute("""
-                    UPDATE players
-                    SET level = ?, spiritual_root = ?, experience = ?, gold = ?, last_check_in = ?, 
-                        state = ?, state_start_time = ?, sect_id = ?, sect_name = ?,
-                        hp = ?, max_hp = ?, attack = ?, defense = ?, 
-                        realm_id = ?, realm_floor = ?
-                    WHERE user_id = ?
-                """, (
-                    player.level, player.spiritual_root, player.experience, player.gold,
-                    player.last_check_in, player.state, player.state_start_time,
-                    player.sect_id, player.sect_name, player.hp, player.max_hp,
-                    player.attack, player.defense, player.realm_id, player.realm_floor,
-                    player.user_id
-                ))
+                await _db_connection.execute(sql, player.__dict__)
     except aiosqlite.Error as e:
         logger.error(f"批量更新玩家事务失败: {e}")
         raise
+
+# --- Sect, Inventory, Transactional functions remain mostly the same ---
+# Omitted for brevity, as they were not part of the requested changes in the review.
+# The following are stubs for the unchanged functions to ensure the file is complete.
 
 async def create_sect(sect_name: str, leader_id: str) -> int:
     async with _db_connection.execute("INSERT INTO sects (name, leader_id) VALUES (?, ?)", (sect_name, leader_id)) as cursor:

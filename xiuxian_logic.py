@@ -10,8 +10,6 @@ from .models import Player, PlayerEffect
 from . import data_manager
 from . import combat_manager
 
-POSSIBLE_SPIRITUAL_ROOTS = ["金", "木", "水", "火", "土", "天", "异"]
-
 def _calculate_base_stats(level_index: int) -> Dict[str, int]:
     """根据境界等级计算基础战斗属性"""
     base_hp = 100 + level_index * 50
@@ -21,7 +19,7 @@ def _calculate_base_stats(level_index: int) -> Dict[str, int]:
 
 def generate_new_player_stats(user_id: str) -> Player:
     """为新玩家生成初始属性"""
-    root = random.choice(POSSIBLE_SPIRITUAL_ROOTS)
+    root = random.choice(config.POSSIBLE_SPIRITUAL_ROOTS)
     initial_stats = _calculate_base_stats(0)
     return Player(
         user_id=user_id,

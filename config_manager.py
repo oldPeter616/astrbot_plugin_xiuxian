@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 
 from astrbot.api import logger
 
@@ -21,14 +21,14 @@ class Config:
         }
 
         # --- 数据容器 (显式声明) ---
-        self.level_data: list = []
-        self.item_data: dict = {}
-        self.boss_data: dict = {}
-        self.monster_data: dict = {}
-        self.realm_data: dict = {}
+        self.level_data: List[dict] = []
+        self.item_data: Dict[str, dict] = {}
+        self.boss_data: Dict[str, dict] = {}
+        self.monster_data: Dict[str, dict] = {}
+        self.realm_data: Dict[str, dict] = {}
         
         # --- 预处理数据容器 (显式声明) ---
-        self.level_map: dict = {}
+        self.level_map: Dict[str, dict] = {}
         self.realm_events: Dict[str, Dict[str, list]] = {}
         self.item_name_to_id: Dict[str, str] = {}
         self.realm_name_to_id: Dict[str, str] = {}
@@ -68,6 +68,9 @@ class Config:
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
         
+        # 游戏规则
+        self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
+
         # 文件
         self.DATABASE_FILE = "xiuxian_data.db"
 
@@ -98,7 +101,7 @@ class Config:
                     main_cfg = json.load(f)
                 
                 # 安全地更新已声明的属性
-                for category in ("COMMANDS", "VALUES", "FILES"):
+                for category in ("COMMANDS", "VALUES", "FILES", "RULES"):
                     if category in main_cfg:
                         for key, value in main_cfg[category].items():
                             if hasattr(self, key):

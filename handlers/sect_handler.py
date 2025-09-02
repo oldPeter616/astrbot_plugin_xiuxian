@@ -1,5 +1,6 @@
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
+from .parser import parse_args
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -11,13 +12,12 @@ class SectHandler:
 
     @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
     @player_required
-    async def handle_create_sect(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split(maxsplit=1)
-        if len(parts) < 2:
+    @parse_args(str)
+    async def handle_create_sect(self, event: AstrMessageEvent, sect_name: str, player: Player):
+        if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_CREATE_SECT} <宗门名称>」。")
             return
-
-        sect_name = parts[1]
+            
         success, msg, updated_player = await xiuxian_logic.handle_create_sect(player, sect_name)
         if success:
             await data_manager.update_player(updated_player)
@@ -25,13 +25,12 @@ class SectHandler:
 
     @filter.command(config.CMD_JOIN_SECT, "加入一个宗门")
     @player_required
-    async def handle_join_sect(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split(maxsplit=1)
-        if len(parts) < 2:
+    @parse_args(str)
+    async def handle_join_sect(self, event: AstrMessageEvent, sect_name: str, player: Player):
+        if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_JOIN_SECT} <宗门名称>」。")
             return
 
-        sect_name = parts[1]
         success, msg, updated_player = await xiuxian_logic.handle_join_sect(player, sect_name)
         if success:
             await data_manager.update_player(updated_player)
@@ -61,7 +60,9 @@ class SectHandler:
             return
 
         leader_player = await data_manager.get_player_by_id(sect_info['leader_id'])
-        leader_info = f"宗主: {leader_player.user_id[-4:]}" if leader_player and leader_player.user_id else "宗主: (信息丢失)"
+        leader_info = "宗主: (信息丢失)"
+        if leader_player and leader_player.user_id:
+            leader_info = f"宗主: {leader_player.user_id[-4:]}"
 
         members = await data_manager.get_sect_members(player.sect_id)
         member_list = [f"{m.level}-{m.user_id[-4:]}" for m in members]

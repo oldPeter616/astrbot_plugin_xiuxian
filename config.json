@@ -35,5 +35,8 @@
     },
     "FILES": {
         "DATABASE_FILE": "xiuxian_data.db"
+    },
+    "RULES": {
+        "POSSIBLE_SPIRITUAL_ROOTS": ["金", "木", "水", "火", "土", "天", "异"]
     }
 }

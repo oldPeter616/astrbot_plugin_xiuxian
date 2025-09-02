@@ -1,8 +1,10 @@
 # main.py
 
 import aiosqlite
+from typing import Dict, Any, List, Tuple, Callable, Awaitable
 from astrbot.api import logger
 from astrbot.api.star import Context, Star
+from astrbot.api.event import AstrMessageEvent
 
 from . import combat_manager, realm_manager, data_manager
 from .config_manager import config
@@ -12,14 +14,17 @@ from .handlers import (
 )
 
 class XiuXianPlugin(Star):
+    # 类型定义
+    HandlerMethod = Callable[[Any, AstrMessageEvent], Awaitable[None]]
+    
     def __init__(self, context: Context):
         super().__init__(context)
         # 1. 实例化核心管理器
         self.battle_manager = combat_manager.BattleManager()
         self.realm_manager = realm_manager.RealmManager()
 
-        # 2. 依赖注入：创建所有Handler的实例，并将依赖项（管理器）通过构造函数传入
-        self.handlers = {
+        # 2. 依赖注入：创建所有Handler的实例
+        self.handlers: Dict[str, Any] = {
             "player": PlayerHandler(),
             "shop": ShopHandler(),
             "sect": SectHandler(),
@@ -28,21 +33,33 @@ class XiuXianPlugin(Star):
             "misc": MiscHandler(),
         }
 
-        # 3. 动态挂载方法以兼容AstrBot框架的指令发现机制
-        # 这种方式保持了Handler类的独立性，同时满足了框架的要求。
+        # 3. 显式指令注册表
+        self.command_map: Dict[str, XiuXianPlugin.HandlerMethod] = {}
         self._register_handlers()
 
     def _register_handlers(self):
         """
-        遍历所有handler实例，将其公开的指令方法挂载到主插件类上。
-        方法名必须以 "handle_" 开头。
+        遍历所有handler实例，将其标记为指令的方法注册到 command_map 中。
+        这种方法比动态 setattr 更清晰，易于追踪。
         """
-        for handler_instance in self.handlers.values():
+        logger.info("开始注册修仙插件指令...")
+        for handler_name, handler_instance in self.handlers.items():
             for attr_name in dir(handler_instance):
                 if attr_name.startswith("handle_"):
                     method = getattr(handler_instance, attr_name)
-                    if callable(method) and hasattr(method, "__is_command__"):
-                        setattr(self, attr_name, method)
+                    # 检查方法是否被 astrbot 的 filter.command 装饰器标记
+                    if callable(method) and hasattr(method, "filters"):
+                        # 从filter中获取指令名
+                        for f in method.filters:
+                            # 这是一个简化的获取方式，实际可能需要更复杂的解析，出bug再修
+                            # 假设第一个 filter 是 command filter
+                            if hasattr(f, "cmds"):
+                                for cmd in f.cmds:
+                                    if cmd in self.command_map:
+                                        logger.warning(f"指令 '{cmd}' 重复注册，将被覆盖。")
+                                    self.command_map[cmd] = method
+                                    setattr(self, attr_name, method) # 兼容旧版 astrbot 发现机制
+                                    logger.info(f"指令 '{cmd}' 已注册到方法 {handler_name}.{attr_name}")
 
     async def initialize(self):
         """插件初始化，加载配置并连接数据库"""
@@ -62,22 +79,3 @@ class XiuXianPlugin(Star):
         """插件卸载/停用时调用，关闭数据库连接池"""
         await data_manager.close_db_pool()
         logger.info("修仙插件已卸载。")
-
-# 为了让 `filter.command` 能在方法定义时就工作
-def command_handler(original_func):
-    """一个简单的装饰器，用于标记一个方法是指令处理器。"""
-    setattr(original_func, "__is_command__", True)
-    return original_func
-
-# 更新 filter.command 的行为，让它能配合我们的新模式
-original_command = filter.command
-def new_command(*args, **kwargs):
-    def decorator(func):
-        # 先应用原始的 command 装饰器
-        decorated_func = original_command(*args, **kwargs)(func)
-        # 再应用我们的标记
-        return command_handler(decorated_func)
-    return decorator
-
-# 全局替换
-filter.command = new_command

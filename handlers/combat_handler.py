@@ -1,5 +1,6 @@
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
+from .parser import parse_args
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -41,13 +42,12 @@ class CombatHandler:
 
     @filter.command(config.CMD_START_BOSS_FIGHT, "开启一场世界Boss讨伐战")
     @player_required
-    async def handle_start_boss_fight(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split(maxsplit=1)
-        if len(parts) < 2:
+    @parse_args(str)
+    async def handle_start_boss_fight(self, event: AstrMessageEvent, boss_name: str, player: Player):
+        if not boss_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_START_BOSS_FIGHT} <Boss名>」。")
             return
 
-        boss_name = parts[1]
         target_boss_config = None
         for boss_id, info in config.boss_data.items():
             if info['name'] == boss_name:
