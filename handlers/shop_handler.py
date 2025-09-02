@@ -1,5 +1,3 @@
-# handlers/shop_handler.py
-
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .. import data_manager, xiuxian_logic
@@ -7,6 +5,10 @@ from ..config_manager import config
 from ..models import Player
 
 class ShopHandler:
+    def __init__(self):
+        # 此Handler没有需要注入的管理器依赖
+        pass
+
     @filter.command(config.CMD_SHOP, "查看坊市商品")
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"
@@ -55,16 +57,13 @@ class ShopHandler:
         item_id_to_add, target_item_info = item_to_buy
         total_cost = target_item_info['price'] * quantity
         
-        # 直接调用事务性操作，不再预先检查
         success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
             yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。")
         else:
             if reason == "ERROR_INSUFFICIENT_FUNDS":
-                 # 从内存中获取最新的玩家数据以显示准确的金钱
-                current_player = await data_manager.get_player_by_id(player.user_id)
-                yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{current_player.gold}。")
+                yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。")
             else:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
@@ -89,13 +88,11 @@ class ShopHandler:
         
         target_item_id, _ = item_to_use
         
-        # 1. 计算物品效果
         effect, msg = xiuxian_logic.calculate_item_effect(target_item_id, quantity)
         if not effect:
             yield event.plain_result(msg)
             return
 
-        # 2. 调用事务性数据库操作来应用效果
         success = await data_manager.transactional_apply_item_effect(player.user_id, target_item_id, quantity, effect)
 
         if success:

@@ -1,11 +1,14 @@
-import asyncio
 from astrbot.api.event import AstrMessageEvent, filter
-from .decorator import player_required, managers_required
+from .decorator import player_required
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
+from ..combat_manager import BattleManager
 
 class CombatHandler:
+    def __init__(self, battle_manager: BattleManager):
+        self.battle_manager = battle_manager
+
     @filter.command(config.CMD_SPAR, "与其他玩家切磋")
     @player_required
     async def handle_spar(self, event: AstrMessageEvent):
@@ -41,8 +44,7 @@ class CombatHandler:
     @player_required
     async def handle_start_boss_fight(self, event: AstrMessageEvent):
         player: Player = event.player
-        battle_manager = event.battle_manager
-
+        
         parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_START_BOSS_FIGHT} <Boss名>」。")
@@ -59,36 +61,34 @@ class CombatHandler:
             yield event.plain_result(f"未找到名为【{boss_name}】的Boss。")
             return
             
-        success, msg = await battle_manager.start_battle(target_boss_config)
+        success, msg = await self.battle_manager.start_battle(target_boss_config)
         yield event.plain_result(msg)
 
         if success:
-            # 添加注释解释为何需要分条发送
-            # 理由：让开启成功的信息先出现，再提示自己加入成功，交互更清晰。
-            await asyncio.sleep(0.5) 
-            _, join_msg = await battle_manager.add_participant(player)
+            _, join_msg = await self.battle_manager.add_participant(player)
             yield event.plain_result(join_msg)
 
     @filter.command(config.CMD_JOIN_FIGHT, "加入当前的Boss战")
     @player_required
     async def handle_join_fight(self, event: AstrMessageEvent):
-        success, msg = await event.battle_manager.add_participant(event.player)
+        success, msg = await self.battle_manager.add_participant(event.player)
         yield event.plain_result(msg)
 
     @filter.command(config.CMD_ATTACK_BOSS, "攻击当前的世界Boss")
     @player_required
     async def handle_attack_boss(self, event: AstrMessageEvent):
-        success, msg, battle_over, updated_players = await event.battle_manager.player_attack(event.player)
+        result = await self.battle_manager.player_attack(event.player)
         
-        yield event.plain_result(msg)
+        yield event.plain_result(result.message)
         
-        if battle_over:
-            for p in updated_players:
-                await data_manager.update_player(p)
-    
+        if result.battle_over and result.updated_players:
+            await data_manager.update_players_in_transaction(result.updated_players)
+        elif result.updated_players:
+            # Boss反击也可能更新玩家状态
+            await data_manager.update_players_in_transaction(result.updated_players)
+
     @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")
-    @managers_required
     async def handle_fight_status(self, event: AstrMessageEvent):
-        battle_manager = event.battle_manager
-        status_report = battle_manager.get_status()
+        # 依赖已在 __init__ 中注入, 无需装饰器
+        status_report = self.battle_manager.get_status()
         yield event.plain_result(status_report)

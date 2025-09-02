@@ -11,46 +11,67 @@ from .handlers import (
     CombatHandler, RealmHandler, MiscHandler
 )
 
-# --- 共享上下文，用于解耦 ---
-shared_context = {}
-
-# 移除 @register
-class XiuXianPlugin(Star,
-                   PlayerHandler,
-                   ShopHandler,
-                   SectHandler,
-                   CombatHandler,
-                   RealmHandler,
-                   MiscHandler):
-
+class XiuXianPlugin(Star):
+    # 继承关系简化，不再需要继承所有Handler
     def __init__(self, context: Context):
         super().__init__(context)
-        # 实例化有状态的管理器
+        # 1. 实例化管理器
         self.battle_manager = combat_manager.BattleManager()
         self.realm_manager = realm_manager.RealmManager()
 
+        # 2. 依赖注入：创建Handler实例并传入依赖
+        self.player_handler = PlayerHandler()
+        self.shop_handler = ShopHandler()
+        self.sect_handler = SectHandler()
+        self.combat_handler = CombatHandler(self.battle_manager)
+        self.realm_handler = RealmHandler(self.realm_manager)
+        self.misc_handler = MiscHandler()
+
     async def initialize(self):
-        """插件初始化，加载配置并连接数据库"""
         try:
             config.load()
             await data_manager.init_db_pool()
-
-            # 将管理器实例注册到共享上下文中
-            shared_context['battle_manager'] = self.battle_manager
-            shared_context['realm_manager'] = self.realm_manager
-
             logger.info("修仙插件：数据库连接池初始化成功。")
-            logger.info("修仙插件已加载，所有指令已通过装饰器自动注册。")
+            logger.info("修仙插件已加载。")
         except aiosqlite.Error as e:
-            logger.error(f"修仙插件：数据库操作失败，请检查数据库文件权限或完整性。错误：{e}")
+            logger.error(f"修仙插件：数据库操作失败。错误：{e}", exc_info=True)
         except FileNotFoundError as e:
-            logger.error(f"修仙插件：缺少必要的配置文件，请检查插件目录结构。错误：{e}")
+            logger.error(f"修仙插件：缺少必要的配置文件。错误：{e}", exc_info=True)
         except Exception as e:
-            logger.critical(f"修仙插件：发生未知严重错误导致初始化失败。错误：{e}", exc_info=True)
-
+            logger.critical(f"修仙插件：初始化失败。错误：{e}", exc_info=True)
 
     async def terminate(self):
-        """插件卸载/停用时调用，关闭数据库连接池"""
         await data_manager.close_db_pool()
-        shared_context.clear() # 清理上下文
         logger.info("修仙插件已卸载。")
+
+    # 3. 将所有handler的方法绑定到主类上
+    # 这是astrtbot框架的要求，通过这种方式注册指令
+    handle_start_xiuxian = PlayerHandler.handle_start_xiuxian
+    handle_player_info = PlayerHandler.handle_player_info
+    handle_check_in = PlayerHandler.handle_check_in
+    handle_start_cultivation = PlayerHandler.handle_start_cultivation
+    handle_end_cultivation = PlayerHandler.handle_end_cultivation
+    handle_breakthrough = PlayerHandler.handle_breakthrough
+    
+    handle_shop = ShopHandler.handle_shop
+    handle_backpack = ShopHandler.handle_backpack
+    handle_buy = ShopHandler.handle_buy
+    handle_use = ShopHandler.handle_use
+    
+    handle_create_sect = SectHandler.handle_create_sect
+    handle_join_sect = SectHandler.handle_join_sect
+    handle_leave_sect = SectHandler.handle_leave_sect
+    handle_my_sect = SectHandler.handle_my_sect
+    
+    handle_spar = CombatHandler.handle_spar
+    handle_start_boss_fight = CombatHandler.handle_start_boss_fight
+    handle_join_fight = CombatHandler.handle_join_fight
+    handle_attack_boss = CombatHandler.handle_attack_boss
+    handle_fight_status = CombatHandler.handle_fight_status
+    
+    handle_realm_list = RealmHandler.handle_realm_list
+    handle_enter_realm = RealmHandler.handle_enter_realm
+    handle_realm_advance = RealmHandler.handle_realm_advance
+    handle_leave_realm = RealmHandler.handle_leave_realm
+    
+    handle_help = MiscHandler.handle_help

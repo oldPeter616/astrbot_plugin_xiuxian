@@ -1,7 +1,7 @@
 # models.py
 # 定义游戏中的数据模型
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional, List, Dict, Any
 
 @dataclass
@@ -25,25 +25,7 @@ class Player:
     realm_floor: int = 0
 
     def clone(self) -> 'Player':
-        """创建一个轻量级的玩家对象副本，用于战斗等临时状态计算"""
-        return Player(
-            user_id=self.user_id,
-            level=self.level,
-            spiritual_root=self.spiritual_root,
-            experience=self.experience,
-            gold=self.gold,
-            last_check_in=self.last_check_in,
-            state=self.state,
-            state_start_time=self.state_start_time,
-            sect_id=self.sect_id,
-            sect_name=self.sect_name,
-            hp=self.hp,
-            max_hp=self.max_hp,
-            attack=self.attack,
-            defense=self.defense,
-            realm_id=self.realm_id,
-            realm_floor=self.realm_floor
-        )
+        return replace(self)
 
 @dataclass
 class PlayerEffect:
@@ -51,7 +33,6 @@ class PlayerEffect:
     experience: int = 0
     gold: int = 0
     hp: int = 0
-    # ... 未来可扩展其他属性
 
 @dataclass
 class Boss:
@@ -75,3 +56,11 @@ class Monster:
     attack: int
     defense: int
     rewards: dict
+
+@dataclass
+class AttackResult:
+    """封装一次攻击的结果"""
+    success: bool
+    message: str
+    battle_over: bool = False
+    updated_players: List[Player] = field(default_factory=list)

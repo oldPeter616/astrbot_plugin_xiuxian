@@ -1,12 +1,14 @@
-# handlers/realm_handler.py
-
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .. import data_manager
 from ..config_manager import config
 from ..models import Player
+from ..realm_manager import RealmManager
 
 class RealmHandler:
+    def __init__(self, realm_manager: RealmManager):
+        self.realm_manager = realm_manager
+
     @filter.command(config.CMD_REALM_LIST, "查看所有可探索的秘境")
     async def handle_realm_list(self, event: AstrMessageEvent):
         reply_msg = "--- 秘境列表 ---\n"
@@ -22,7 +24,6 @@ class RealmHandler:
     @player_required
     async def handle_enter_realm(self, event: AstrMessageEvent):
         player: Player = event.player
-        realm_manager = event.realm_manager
         
         parts = event.message_str.strip().split(maxsplit=1)
         if len(parts) < 2:
@@ -30,7 +31,6 @@ class RealmHandler:
             return
         
         realm_name = parts[1]
-        # 性能优化：使用映射查询
         realm_found = config.get_realm_by_name(realm_name)
         
         if not realm_found:
@@ -38,7 +38,7 @@ class RealmHandler:
             return
             
         target_realm_id, _ = realm_found
-        success, msg, updated_player = realm_manager.start_session(player, target_realm_id)
+        success, msg, updated_player = self.realm_manager.start_session(player, target_realm_id)
         
         if success:
             await data_manager.update_player(updated_player)
@@ -49,27 +49,24 @@ class RealmHandler:
     @player_required
     async def handle_realm_advance(self, event: AstrMessageEvent):
         player: Player = event.player
-        realm_manager = event.realm_manager
 
         if not player.realm_id:
             yield event.plain_result("你不在任何秘境中，无法前进。")
             return
             
-        success, msg, updated_player, gained_items = await realm_manager.advance_session(player)
+        success, msg, updated_player, gained_items = await self.realm_manager.advance_session(player)
         
-        # 将获得的物品添加到背包
         if gained_items:
+            await data_manager.add_items_to_inventory_in_transaction(player.user_id, gained_items)
+            
             item_log = []
             for item_id, qty in gained_items.items():
-                await data_manager.add_item_to_inventory(player.user_id, item_id, qty)
                 item_name = config.item_data.get(item_id, {}).get("name", "未知物品")
                 item_log.append(f"【{item_name}】x{qty}")
             if item_log:
                 msg += "\n获得物品：" + ", ".join(item_log)
 
-        # 核心：无论成功失败，都将返回的最新玩家状态保存
         await data_manager.update_player(updated_player)
-        
         yield event.plain_result(msg)
 
     @filter.command(config.CMD_LEAVE_REALM, "离开当前秘境")
@@ -83,7 +80,6 @@ class RealmHandler:
             
         realm_name = config.realm_data.get(player.realm_id, {}).get("name", "未知的秘境")
         
-        # 核心：直接修改玩家状态并保存
         player.realm_id = None
         player.realm_floor = 0
         await data_manager.update_player(player)

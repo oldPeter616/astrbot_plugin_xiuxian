@@ -2,6 +2,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from ..config_manager import config
 
 class MiscHandler:
+    def __init__(self):
+        # 此Handler没有需要注入的管理器依赖
+        pass
+
     @filter.command(config.CMD_HELP, "显示帮助信息")
     async def handle_help(self, event: AstrMessageEvent):
         help_text = (

@@ -1,5 +1,3 @@
-# handlers/sect_handler.py
-
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .. import data_manager, xiuxian_logic
@@ -7,6 +5,10 @@ from ..config_manager import config
 from ..models import Player
 
 class SectHandler:
+    def __init__(self):
+        # 此Handler没有需要注入的管理器依赖
+        pass
+
     @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
     @player_required
     async def handle_create_sect(self, event: AstrMessageEvent):
@@ -62,7 +64,6 @@ class SectHandler:
             yield event.plain_result("错误：找不到你的宗门信息，可能已被解散。已将你设为散修。")
             return
 
-        # 健壮性增强：检查宗主是否存在
         leader_player = await data_manager.get_player_by_id(sect_info['leader_id'])
         leader_info = f"宗主: {leader_player.user_id[-4:]}" if leader_player else "宗主: (信息丢失)"
 
