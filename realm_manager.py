@@ -28,16 +28,16 @@ class RealmManager:
         cost = realm_config['entry_cost']['gold']
         if p.gold < cost:
             return False, f"进入此秘境需要 {cost} 灵石，你的灵石不足。", p
-        
+
         player_level_idx = config.level_map.get(p.level, {}).get("index", -1)
         req_level_idx = config.level_map.get(realm_config['level_requirement'], {}).get("index", 999)
         if player_level_idx < req_level_idx:
             return False, f"你的境界（{p.level}）未达到进入【{realm_config['name']}】所需的（{realm_config['level_requirement']}）！", p
-        
+
         p.gold -= cost
         p.realm_id = realm_id
         p.realm_floor = 0
-        
+
         msg = (f"你消耗了 {cost} 灵石，进入了【{realm_config['name']}】。\n"
                f"此地共有 {realm_config['total_floors']} 层，充满了未知的危险与机遇。\n"
                f"使用「{config.CMD_REALM_ADVANCE}」指令向前探索。")
@@ -53,79 +53,109 @@ class RealmManager:
 
         p = deepcopy(player)
         realm_config = config.realm_data[p.realm_id]
-        total_floors = realm_config['total_floors']
-        
+
         p.realm_floor += 1
-        
-        is_boss_floor = p.realm_floor == total_floors
+
+        if p.realm_floor == realm_config['total_floors']:
+            return await self._handle_boss_floor(p, realm_config)
+
+        return await self._handle_normal_floor(p, realm_config)
+
+    async def _handle_boss_floor(self, p: Player, realm_config: dict) -> Tuple[bool, str, Player, Dict]:
+        """处理最终头目楼层"""
+        total_floors = realm_config['total_floors']
+        event_log = [f"--- 第 {p.realm_floor}/{total_floors} 层 (最终挑战) ---"]
+        boss_id = realm_config['boss_id']
+        monster_config = config.monster_data.get(boss_id)
+        enemy = Monster(id=boss_id, **monster_config, max_hp=monster_config['hp'])
+
+        victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
+        event_log.extend(combat_log)
+
         gained_items = {}
-        
-        if is_boss_floor:
-            event_log = [f"--- 第 {p.realm_floor}/{total_floors} 层 (最终挑战) ---"]
-            boss_id = realm_config['boss_id']
-            monster_config = config.monster_data.get(boss_id)
-            enemy = Monster(id=boss_id, **monster_config, max_hp=monster_config['hp'])
-            
-            victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
-            event_log.extend(combat_log)
+        if victory:
+            rewards = self._get_rewards(enemy.rewards)
+            p_after_combat.gold += rewards['gold']
+            p_after_combat.experience += rewards['experience']
+            gained_items = rewards['items']
+            event_log.append(f"\n成功击败最终头目！你通关了【{realm_config['name']}】！")
+            reward_text = []
+            if rewards['gold'] > 0: reward_text.append(f"灵石+{rewards['gold']}")
+            if rewards['experience'] > 0: reward_text.append(f"修为+{rewards['experience']}")
+            if reward_text: event_log.append(f"获得奖励：" + ", ".join(reward_text))
+        else:
+            event_log.append(f"\n挑战失败！你被传送出了秘境。")
 
-            if victory:
-                rewards = self._get_rewards(enemy.rewards)
-                p_after_combat.gold += rewards['gold']
-                p_after_combat.experience += rewards['experience']
-                gained_items = rewards['items']
-                event_log.append(f"\n成功击败最终头目！你通关了【{realm_config['name']}】！")
-                reward_text = []
-                if rewards['gold'] > 0: reward_text.append(f"灵石+{rewards['gold']}")
-                if rewards['experience'] > 0: reward_text.append(f"修为+{rewards['experience']}")
-                if reward_text: event_log.append(f"获得奖励：" + ", ".join(reward_text))
-            else:
-                event_log.append(f"\n挑战失败！你被传送出了秘境。")
-            
-            p_after_combat.realm_id = None
-            p_after_combat.realm_floor = 0
-            return victory, "\n".join(event_log), p_after_combat, gained_items
+        # 无论胜败，都结束探索
+        p_after_combat.realm_id = None
+        p_after_combat.realm_floor = 0
+        return victory, "\n".join(event_log), p_after_combat, gained_items
 
-        event_log = [f"--- 第 {p.realm_floor}/{total_floors} 层 ---"]
+    async def _handle_normal_floor(self, p: Player, realm_config: dict) -> Tuple[bool, str, Player, Dict]:
+        """处理普通楼层事件"""
+        event_log = [f"--- 第 {p.realm_floor}/{realm_config['total_floors']} 层 ---"]
         events_pool = config.realm_events.get(p.realm_id, {})
-        event_types = list(events_pool.keys())
-        event_weights = [sum(e.get('weight', 0) for e in events_pool.get(t, [])) for t in event_types]
-        
+
+        # 稳定性增强：检查事件池是否为空
+        if not events_pool or not any(events_pool.values()):
+            event_log.append("此地异常安静，你谨慎地探索着，未发生任何事。")
+            return True, "\n".join(event_log), p, {}
+
+        # 筛选出有事件的类别
+        event_types = [t for t, evs in events_pool.items() if evs]
+        if not event_types:
+            event_log.append("此地似乎并无机缘，你继续前行。")
+            return True, "\n".join(event_log), p, {}
+
+        event_weights = [sum(e.get('weight', 1) for e in events_pool[t]) for t in event_types]
+
+        # 如果所有权重都为0，也视为无事发生
         if not any(w > 0 for w in event_weights):
-             return True, "\n".join(event_log) + "\n此地异常安静，你谨慎地探索着，未发生任何事。", p, {}
+            event_log.append("空气中弥漫着一股凝滞的气息，但什么也没发生。")
+            return True, "\n".join(event_log), p, {}
 
         chosen_event_type = random.choices(event_types, weights=event_weights, k=1)[0]
-        
-        if chosen_event_type == "monster" and events_pool.get('monster'):
-            chosen_monster_event = random.choice(events_pool['monster'])
-            monster_id = chosen_monster_event['id']
-            monster_config = config.monster_data[monster_id]
-            enemy = Monster(id=monster_id, **monster_config, max_hp=monster_config['hp'])
-            
-            victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
-            event_log.extend(combat_log)
-            p = p_after_combat
 
-            if victory:
-                rewards = self._get_rewards(enemy.rewards)
-                p.gold += rewards['gold']
-                p.experience += rewards['experience']
-                gained_items = rewards['items']
-            else:
-                p.realm_id = None
-                p.realm_floor = 0
-            return victory, "\n".join(event_log), p, gained_items
+        if chosen_event_type == "monster":
+            return await self._handle_monster_event(p, event_log, events_pool['monster'])
+
+        if chosen_event_type == "treasure":
+            return self._handle_treasure_event(p, event_log, events_pool['treasure'])
+
+        return True, "\n".join(event_log) + "\n你谨慎地探索着，未发生任何事。", p, {}
+
+    async def _handle_monster_event(self, p: Player, event_log: list, monster_pool: list) -> Tuple[bool, str, Player, Dict]:
+        """处理遭遇怪物事件"""
+        chosen_monster_event = random.choice(monster_pool)
+        monster_id = chosen_monster_event['id']
+        monster_config = config.monster_data[monster_id]
+        enemy = Monster(id=monster_id, **monster_config, max_hp=monster_config['hp'])
         
-        elif chosen_event_type == "treasure" and events_pool.get('treasure'):
-            chosen_treasure_event = random.choice(events_pool['treasure'])
-            rewards = self._get_rewards(chosen_treasure_event['rewards'])
+        victory, combat_log, p_after_combat = await combat_manager.player_vs_monster(p, enemy)
+        event_log.extend(combat_log)
+        p = p_after_combat
+
+        gained_items = {}
+        if victory:
+            rewards = self._get_rewards(enemy.rewards)
             p.gold += rewards['gold']
             p.experience += rewards['experience']
             gained_items = rewards['items']
-            event_log.append("你发现了一个宝箱，收获颇丰！")
-            return True, "\n".join(event_log), p, gained_items
-            
-        return True, "\n".join(event_log) + "\n你谨慎地探索着，未发生任何事。", p, {}
+        else:
+            # 战斗失败，重置秘境状态
+            p.realm_id = None
+            p.realm_floor = 0
+        return victory, "\n".join(event_log), p, gained_items
+
+    def _handle_treasure_event(self, p: Player, event_log: list, treasure_pool: list) -> Tuple[bool, str, Player, Dict]:
+        """处理发现宝藏事件"""
+        chosen_treasure_event = random.choice(treasure_pool)
+        rewards = self._get_rewards(chosen_treasure_event['rewards'])
+        p.gold += rewards['gold']
+        p.experience += rewards['experience']
+        gained_items = rewards['items']
+        event_log.append("你发现了一个宝箱，收获颇丰！")
+        return True, "\n".join(event_log), p, gained_items
 
     def _get_rewards(self, rewards_config: dict) -> dict:
         """根据配置计算本次获得的具体奖励"""

@@ -1,8 +1,8 @@
 # xiuxian_logic.py
-# 核心游戏逻辑模块 (已重构)
+# 核心游戏逻辑模块
 
 import random
-import asyncio # 导入asyncio
+import asyncio
 from typing import Tuple, Dict, Any, Optional
 
 from .config_manager import config
@@ -33,7 +33,6 @@ def generate_new_player_stats(user_id: str) -> Player:
 def handle_check_in(player: Player) -> Tuple[bool, str, Player]:
     """处理签到逻辑"""
     now = asyncio.get_running_loop().time()
-    # 假设 last_check_in 存储的也是 loop time
     if now - player.last_check_in < 22 * 60 * 60:
         return False, "道友，今日已经签到过了，请明日再来。", player
 
@@ -50,7 +49,7 @@ def handle_start_cultivation(player: Player) -> Tuple[bool, str, Player]:
         return False, f"道友当前正在「{player.state}」中，无法分心闭关。", player
     
     player.state = "修炼中"
-    player.state_start_time = asyncio.get_running_loop().time() 
+    player.state_start_time = asyncio.get_running_loop().time()
     
     msg = "道友已进入冥想状态，开始闭关修炼。使用「出关」可查看修炼成果。"
     return True, msg, player
@@ -104,7 +103,7 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
     
     if random.random() < success_rate:
         player.level = next_level_info['level_name']
-        player.experience -= exp_needed
+        player.experience = 0 # 突破后修为清零或保留多余部分，此处为清零
         
         new_stats = _calculate_base_stats(current_level_index + 1)
         player.hp = new_stats['hp']
@@ -123,25 +122,6 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
         
     return True, msg, player
     
-def handle_buy_item(player: Player, item_name: str, quantity: int) -> Tuple[bool, str, Optional[Player], Optional[str]]:
-    """处理购买物品逻辑"""
-    target_item_id, target_item_info = None, None
-    for item_id, info in config.item_data.items():
-        if info['name'] == item_name:
-            target_item_id, target_item_info = item_id, info
-            break
-            
-    if not target_item_info:
-        return False, f"道友，小店中并无「{item_name}」这件商品。", None, None
-
-    total_cost = target_item_info['price'] * quantity
-    if player.gold < total_cost:
-        return False, f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。", None, None
-
-    player.gold -= total_cost
-    msg = f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。"
-    return True, msg, player, target_item_id
-
 def _effect_add_experience(player: Player, value: int) -> str:
     player.experience += value
     return f"修为增加了 {value} 点！"
@@ -155,17 +135,17 @@ ITEM_EFFECT_HANDLERS = {
     "add_gold": _effect_add_gold,
 }
 
-def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Optional[Player]]:
-    """处理物品使用逻辑 (同步函数，策略模式)"""
+def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Player]:
+    """处理物品使用逻辑"""
     item_info = config.item_data.get(item_id)
     if not item_info or not (effect := item_info.get("effect")):
-        return False, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。", None
+        return False, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。", player
 
     effect_type = effect.get("type")
     handler = ITEM_EFFECT_HANDLERS.get(effect_type)
 
     if not handler:
-        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", None
+        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", player
 
     value = effect.get("value", 0) * quantity
     result_msg = handler(player, value)
@@ -214,8 +194,14 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     
     sect = await data_manager.get_sect_by_id(player.sect_id)
     if sect and sect['leader_id'] == player.user_id:
-        return False, "道友身为一宗之主，身系宗门兴衰，不可轻易脱离！请先传位于他人。", None
-        
+        # 宗门不可无主，需要先传位或解散
+        members = await data_manager.get_sect_members(player.sect_id)
+        if len(members) > 1:
+            return False, "道友身为一宗之主，身系宗门兴衰，不可轻易脱离！请先传位于他人或解散宗门。", None
+        else:
+            # 如果宗门只剩自己，则直接解散
+            await data_manager.delete_sect(player.sect_id)
+
     sect_name = player.sect_name
     player.sect_id = None
     player.sect_name = None
@@ -223,11 +209,8 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, List[Player]]:
-    """处理PVP逻辑，并返回战报和需要更新状态的玩家列表"""
-    winner, loser, combat_log = await combat_manager.player_vs_player(attacker, defender)
-    
+async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, list]:
+    """处理PVP逻辑，并返回战报"""
+    _, _, combat_log = await combat_manager.player_vs_player(attacker, defender)
     report = "\n".join(combat_log)
-    
-    # 切磋不改变HP，因此返回空列表
     return report, []

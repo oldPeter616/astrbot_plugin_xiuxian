@@ -15,9 +15,9 @@ DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-LATEST_DB_VERSION = 4 # 版本号提升
+LATEST_DB_VERSION = 4
 
-# --- 连接核心 (重命名) ---
+# --- 连接核心 ---
 _db_connection: Optional[aiosqlite.Connection] = None
 
 async def init_db_pool():
@@ -25,7 +25,7 @@ async def init_db_pool():
     global _db_connection
     if _db_connection is None:
         _db_connection = await aiosqlite.connect(DB_PATH)
-        _db_connection.row_factory = aiosqlite.Row # 一次性设置
+        _db_connection.row_factory = aiosqlite.Row
         logger.info(f"数据库连接已创建: {DB_PATH}")
         await migrate_database()
 
@@ -45,7 +45,7 @@ async def migrate_database():
     async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
             logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v3()
+            await _create_all_tables_v4() # Bug 修复：调用正确的最新版本建表函数
             await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
             await _db_connection.commit()
             logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -68,7 +68,7 @@ async def migrate_database():
             await _upgrade_v2_to_v3()
             current_version = 3
         if current_version < 4:
-            await _upgrade_v3_to_v4() # 新增迁移步骤
+            await _upgrade_v3_to_v4()
         
         logger.info("数据库升级完成！")
     else:
@@ -277,3 +277,44 @@ async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int =
         else:
             await _db_connection.rollback()
             return False
+        
+async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> bool:
+    """事务性地处理购买物品：扣款并添加物品，保证数据一致性"""
+    try:
+        async with _db_connection.transaction():
+            # 1. 扣款，并校验余额
+            cursor = await _db_connection.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (total_cost, user_id, total_cost)
+            )
+            if cursor.rowcount == 0:
+                # 如果没有行被更新，说明余额不足，事务会自动回滚
+                return False
+
+            # 2. 添加物品
+            await _db_connection.execute("""
+                INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+                ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
+            """, (user_id, item_id, quantity))
+        return True
+    except aiosqlite.Error as e:
+        logger.error(f"购买物品事务失败: {e}")
+        return False
+
+async def transactional_use_item(user_id: str, item_id: str, quantity: int) -> bool:
+    """事务性地安全移除背包物品"""
+    try:
+        async with _db_connection.transaction():
+            cursor = await _db_connection.execute(
+                "UPDATE inventory SET quantity = quantity - ? WHERE user_id = ? AND item_id = ? AND quantity >= ?",
+                (quantity, user_id, item_id, quantity)
+            )
+            if cursor.rowcount == 0:
+                # 数量不足，事务回滚
+                return False
+            
+            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+        return True
+    except aiosqlite.Error as e:
+        logger.error(f"使用物品事务（移除阶段）失败: {e}")
+        return False

@@ -1,3 +1,5 @@
+# handlers/sect_handler.py
+
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .. import data_manager, xiuxian_logic
@@ -60,13 +62,16 @@ class SectHandler:
             yield event.plain_result("错误：找不到你的宗门信息，可能已被解散。已将你设为散修。")
             return
 
-        leader_name = (await data_manager.get_player_by_id(sect_info['leader_id'])).user_id # 简化显示
+        # 健壮性增强：检查宗主是否存在
+        leader_player = await data_manager.get_player_by_id(sect_info['leader_id'])
+        leader_info = f"宗主: {leader_player.user_id[-4:]}" if leader_player else "宗主: (信息丢失)"
+
         members = await data_manager.get_sect_members(player.sect_id)
         member_list = [f"{m.level}-{m.user_id[-4:]}" for m in members]
 
         reply_msg = (
             f"--- {sect_info['name']} (Lv.{sect_info['level']}) ---\n"
-            f"宗主: {leader_name[-4:]}\n"
+            f"{leader_info}\n"
             f"宗门资金：{sect_info['funds']} 灵石\n"
             f"成员 ({len(members)}人):\n"
             f"{' | '.join(member_list)}\n"

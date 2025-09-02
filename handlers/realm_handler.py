@@ -1,3 +1,5 @@
+# handlers/realm_handler.py
+
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .. import data_manager
@@ -28,16 +30,14 @@ class RealmHandler:
             return
         
         realm_name = parts[1]
-        target_realm_id = None
-        for r_id, info in config.realm_data.items():
-            if info['name'] == realm_name:
-                target_realm_id = r_id
-                break
+        # 性能优化：使用映射查询
+        realm_found = config.get_realm_by_name(realm_name)
         
-        if not target_realm_id:
+        if not realm_found:
             yield event.plain_result(f"未找到名为【{realm_name}】的秘境。")
             return
             
+        target_realm_id, _ = realm_found
         success, msg, updated_player = realm_manager.start_session(player, target_realm_id)
         
         if success:

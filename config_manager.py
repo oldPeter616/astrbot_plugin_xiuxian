@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, Optional
 
 from astrbot.api import logger
 
@@ -28,12 +28,16 @@ class Config:
         self.realm_data: dict = {}
         self.level_map: dict = {}
         self.realm_events: Dict[str, Dict[str, list]] = {}
-        
-        # --- 设置默认值 ---
+
+        # --- 用于性能优化的名称到ID映射 ---
+        self.item_name_to_id: Dict[str, str] = {}
+        self.realm_name_to_id: Dict[str, str] = {}
+
         self._set_defaults()
 
     def _set_defaults(self):
         """设置所有配置的默认值"""
+        # 指令
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
         self.CMD_CHECK_IN = "签到"
@@ -88,13 +92,14 @@ class Config:
         return False
 
     def load(self):
-        """显式加载所有配置文件"""
-        # 加载主配置文件
+        """显式加载所有配置文件并进行后处理"""
         if self._load_json_config(self._paths["config"], "main_config", "主"):
             main_cfg = getattr(self, "main_config")
-            for category, settings in main_cfg.items():
-                for key, value in settings.items():
-                    setattr(self, key, value)
+            # 将 COMMANDS, VALUES, FILES 类别下的所有键值对设置为 config 对象的属性
+            for category in ("COMMANDS", "VALUES", "FILES"):
+                if category in main_cfg:
+                    for key, value in main_cfg[category].items():
+                        setattr(self, key, value)
 
         # 加载其他数据文件
         self._load_json_config(self._paths["level"], "level_data", "境界")
@@ -103,9 +108,10 @@ class Config:
         self._load_json_config(self._paths["monster"], "monster_data", "怪物")
         self._load_json_config(self._paths["realm"], "realm_data", "秘境")
 
-        # --- 数据后处理 ---
+        # --- 数据后处理，建立映射以优化性能 ---
         self._post_process_level_data()
         self._post_process_realm_data()
+        self._post_process_item_data()
 
     def _post_process_level_data(self):
         """预处理境界数据"""
@@ -113,20 +119,37 @@ class Config:
             if level_name := level_info.get("level_name"):
                 self.level_map[level_name] = {"index": i, **level_info}
 
+    def _post_process_item_data(self):
+        """预处理物品数据，建立名称到ID的映射"""
+        for item_id, info in self.item_data.items():
+            if name := info.get("name"):
+                self.item_name_to_id[name] = item_id
+    
     def _post_process_realm_data(self):
-        """预处理秘境事件"""
+        """预处理秘境数据，建立事件池和名称映射"""
         for realm_id, realm_info in self.realm_data.items():
+            if name := realm_info.get("name"):
+                self.realm_name_to_id[name] = realm_id
+            
             self.realm_events[realm_id] = {'monster': [], 'treasure': []}
             for event in realm_info.get("events", []):
-                if event['type'] in self.realm_events[realm_id]:
-                    self.realm_events[realm_id][event['type']].append(event)
+                if event_type := event.get('type'):
+                    if event_type in self.realm_events[realm_id]:
+                        self.realm_events[realm_id][event_type].append(event)
 
-    def get_item_by_name(self, name: str) -> tuple[str | None, dict | None]:
-        """根据名称查找物品"""
-        for item_id, info in self.item_data.items():
-            if info.get("name") == name:
-                return item_id, info
-        return None, None
+    def get_item_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
+        """根据名称高效查找物品"""
+        item_id = self.item_name_to_id.get(name)
+        if item_id:
+            return item_id, self.item_data.get(item_id)
+        return None
+
+    def get_realm_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
+        """根据名称高效查找秘境"""
+        realm_id = self.realm_name_to_id.get(name)
+        if realm_id:
+            return realm_id, self.realm_data.get(realm_id)
+        return None
 
 # 全局配置实例
 _current_dir = Path(__file__).parent
