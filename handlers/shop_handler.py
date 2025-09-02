@@ -90,22 +90,16 @@ class ShopHandler:
         
         target_item_id, _ = item_to_use
         
-        # 1. 先安全地从数据库移除物品
-        removed = await data_manager.transactional_use_item(player.user_id, target_item_id, quantity)
-        if not removed:
-             yield event.plain_result(f"你的「{item_name}」数量不足 {quantity} 个！")
-             return
+        # 1. 计算物品效果
+        effect, msg = xiuxian_logic.calculate_item_effect(target_item_id, quantity)
+        if not effect:
+            yield event.plain_result(msg)
+            return
 
-        # 2. 物品移除成功后，在内存中应用效果
-        #    重新获取最新的玩家数据，避免状态不一致
-        current_player_state = await data_manager.get_player_by_id(player.user_id)
-        eff_success, msg, updated_player = xiuxian_logic.handle_use_item(current_player_state, target_item_id, quantity)
-        
-        if eff_success:
-            # 3. 将应用效果后的玩家状态存回数据库
-            await data_manager.update_player(updated_player)
+        # 2. 调用事务性数据库操作来应用效果
+        success = await data_manager.transactional_apply_item_effect(player.user_id, target_item_id, quantity, effect)
+
+        if success:
             yield event.plain_result(msg)
         else:
-            # 如果应用效果失败，可以考虑将物品加回去，实现真正的回滚
-            await data_manager.add_item_to_inventory(player.user_id, target_item_id, quantity)
-            yield event.plain_result(f"你使用了【{item_name}】，但似乎什么也没发生...物品已返还。")
+            yield event.plain_result(f"使用失败！你的「{item_name}」数量不足 {quantity} 个，或发生了未知错误。")

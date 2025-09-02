@@ -4,7 +4,12 @@ from .. import data_manager
 from ..config_manager import config
 
 def player_required(func):
-    """装饰器：检查玩家是否存在，并将player对象附加到event上。"""
+    """
+    装饰器：检查玩家是否存在，并将player对象附加到event上。
+    
+    被此装饰器包裹的函数必须是一个异步生成器 (async def with yield)，
+    否则会在运行时抛出 TypeError。
+    """
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
         user_id = event.get_sender_id()

@@ -9,7 +9,7 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from .config_manager import config
-from .models import Player
+from .models import Player, PlayerEffect
 
 DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -216,6 +216,11 @@ async def create_sect(sect_name: str, leader_id: str) -> int:
         await _db_connection.commit()
         return cursor.lastrowid
 
+async def delete_sect(sect_id: int):
+    """删除宗门"""
+    await _db_connection.execute("DELETE FROM sects WHERE id = ?", (sect_id,))
+    await _db_connection.commit()
+
 async def get_sect_by_name(sect_name: str) -> Optional[Dict[str, Any]]:
     async with _db_connection.execute("SELECT * FROM sects WHERE name = ?", (sect_name,)) as cursor:
         row = await cursor.fetchone()
@@ -264,19 +269,21 @@ async def add_item_to_inventory(user_id: str, item_id: str, quantity: int = 1):
 
 async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
     """从用户背包移除物品 (原子操作)"""
-    async with _db_connection.cursor() as cursor:
-        await cursor.execute("""
-            UPDATE inventory SET quantity = quantity - ? 
-            WHERE user_id = ? AND item_id = ? AND quantity >= ?
-        """, (quantity, user_id, item_id, quantity))
-        
-        if cursor.rowcount > 0:
-            await cursor.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
-            await _db_connection.commit()
-            return True
-        else:
-            await _db_connection.rollback()
-            return False
+    try:
+        async with _db_connection.transaction():
+            cursor = await _db_connection.execute("""
+                UPDATE inventory SET quantity = quantity - ? 
+                WHERE user_id = ? AND item_id = ? AND quantity >= ?
+            """, (quantity, user_id, item_id, quantity))
+            
+            if cursor.rowcount == 0:
+                return False # 数量不足，事务自动回滚
+
+            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+        return True
+    except aiosqlite.Error as e:
+        logger.error(f"移除物品事务失败: {e}")
+        return False
         
 async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> bool:
     """事务性地处理购买物品：扣款并添加物品，保证数据一致性"""
@@ -301,20 +308,33 @@ async def transactional_buy_item(user_id: str, item_id: str, quantity: int, tota
         logger.error(f"购买物品事务失败: {e}")
         return False
 
-async def transactional_use_item(user_id: str, item_id: str, quantity: int) -> bool:
-    """事务性地安全移除背包物品"""
+async def transactional_apply_item_effect(user_id: str, item_id: str, quantity: int, effect: PlayerEffect) -> bool:
+    """事务性地处理物品使用：扣除物品并应用效果"""
     try:
         async with _db_connection.transaction():
+            # 1. 扣除物品
             cursor = await _db_connection.execute(
                 "UPDATE inventory SET quantity = quantity - ? WHERE user_id = ? AND item_id = ? AND quantity >= ?",
                 (quantity, user_id, item_id, quantity)
             )
             if cursor.rowcount == 0:
-                # 数量不足，事务回滚
-                return False
+                return False # 物品数量不足，事务回滚
             
+            # 清理数量为0的物品
             await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+
+            # 2. 应用效果
+            await _db_connection.execute(
+                """
+                UPDATE players 
+                SET experience = experience + ?,
+                    gold = gold + ?,
+                    hp = MIN(max_hp, hp + ?)
+                WHERE user_id = ?
+                """,
+                (effect.experience, effect.gold, effect.hp, user_id)
+            )
         return True
     except aiosqlite.Error as e:
-        logger.error(f"使用物品事务（移除阶段）失败: {e}")
+        logger.error(f"使用物品事务失败: {e}")
         return False

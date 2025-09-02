@@ -25,6 +25,14 @@ class Player:
     realm_floor: int = 0
 
 @dataclass
+class PlayerEffect:
+    """用于原子化更新玩家状态的数据模型"""
+    experience: int = 0
+    gold: int = 0
+    hp: int = 0
+    # ... 未来可扩展其他属性
+
+@dataclass
 class Boss:
     """Boss 数据模型"""
     id: str

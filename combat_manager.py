@@ -11,6 +11,8 @@ from .config_manager import config
 
 class BattleSession:
     """封装一场世界Boss战斗的所有状态"""
+    BOSS_COUNTER_ATTACK_FREQUENCY = 3 # Boss反击频率
+
     def __init__(self, boss: Boss):
         self.boss = boss
         self.participants: Dict[str, Player] = {}
@@ -98,7 +100,7 @@ class BattleManager:
 
             self.current_battle.player_attack_count += 1
             changed_players = []
-            if self.current_battle.player_attack_count % 3 == 0:
+            if self.current_battle.player_attack_count % BattleSession.BOSS_COUNTER_ATTACK_FREQUENCY == 0:
                 self.current_battle.log.append(f"【{self.current_battle.boss.name}】被激怒了，发动了猛烈的反击！")
                 changed_player = await self._boss_attack()
                 if changed_player:

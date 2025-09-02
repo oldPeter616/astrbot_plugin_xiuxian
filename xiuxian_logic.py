@@ -6,7 +6,7 @@ import asyncio
 from typing import Tuple, Dict, Any, Optional
 
 from .config_manager import config
-from .models import Player
+from .models import Player, PlayerEffect
 from . import data_manager
 from . import combat_manager
 
@@ -122,35 +122,32 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
         
     return True, msg, player
     
-def _effect_add_experience(player: Player, value: int) -> str:
-    player.experience += value
-    return f"修为增加了 {value} 点！"
-
-def _effect_add_gold(player: Player, value: int) -> str:
-    player.gold += value
-    return f"灵石增加了 {value} 点！"
-
-ITEM_EFFECT_HANDLERS = {
-    "add_experience": _effect_add_experience,
-    "add_gold": _effect_add_gold,
-}
-
-def handle_use_item(player: Player, item_id: str, quantity: int) -> Tuple[bool, str, Player]:
-    """处理物品使用逻辑"""
+def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerEffect], str]:
+    """计算物品效果，返回效果对象和描述文本"""
     item_info = config.item_data.get(item_id)
-    if not item_info or not (effect := item_info.get("effect")):
-        return False, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。", player
+    if not item_info or not (effect_config := item_info.get("effect")):
+        return None, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。"
 
-    effect_type = effect.get("type")
-    handler = ITEM_EFFECT_HANDLERS.get(effect_type)
+    effect = PlayerEffect()
+    messages = []
 
-    if not handler:
-        return False, f"你研究了半天，也没能参透【{item_info['name']}】的用法。", player
+    effect_type = effect_config.get("type")
+    value = effect_config.get("value", 0) * quantity
+    
+    if effect_type == "add_experience":
+        effect.experience = value
+        messages.append(f"修为增加了 {value} 点")
+    elif effect_type == "add_gold":
+        effect.gold = value
+        messages.append(f"灵石增加了 {value} 点")
+    elif effect_type == "add_hp":
+        effect.hp = value
+        messages.append(f"恢复了 {value} 点生命")
+    else:
+         return None, f"你研究了半天，也没能参透【{item_info['name']}】的用法。"
 
-    value = effect.get("value", 0) * quantity
-    result_msg = handler(player, value)
-    msg = f"你使用了 {quantity} 个【{item_info['name']}】，{result_msg}"
-    return True, msg, player
+    full_message = f"你使用了 {quantity} 个【{item_info['name']}】，" + "，".join(messages) + "！"
+    return effect, full_message
 
 async def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
     """处理创建宗门逻辑"""
@@ -209,8 +206,8 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-async def handle_pvp(attacker: Player, defender: Player) -> Tuple[str, list]:
+async def handle_pvp(attacker: Player, defender: Player) -> str:
     """处理PVP逻辑，并返回战报"""
     _, _, combat_log = await combat_manager.player_vs_player(attacker, defender)
     report = "\n".join(combat_log)
-    return report, []
+    return report
