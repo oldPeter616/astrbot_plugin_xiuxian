@@ -10,13 +10,13 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from .config_manager import config
-from .models import Player, PlayerEffect
+from .models import Player, PlayerEffect, Item
 
 DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-LATEST_DB_VERSION = 4
+LATEST_DB_VERSION = 5
 
 # --- 迁移任务注册表 ---
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection], Awaitable[None]]] = {}
@@ -55,7 +55,7 @@ async def migrate_database():
     async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
             logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v4(_db_connection)
+            await _create_all_tables_v5(_db_connection)
             await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
             await _db_connection.commit()
             logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -86,8 +86,8 @@ async def migrate_database():
         logger.info("数据库结构已是最新。")
 
 
-async def _create_all_tables_v4(conn: aiosqlite.Connection):
-    """创建版本4（最新）的所有表结构"""
+async def _create_all_tables_v5(conn: aiosqlite.Connection):
+    """创建版本5（最新）的所有表结构"""
     await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS sects (
@@ -98,12 +98,22 @@ async def _create_all_tables_v4(conn: aiosqlite.Connection):
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
-            user_id TEXT PRIMARY KEY, level TEXT NOT NULL, spiritual_root TEXT NOT NULL,
-            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
-            state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER,
-            sect_name TEXT, hp INTEGER NOT NULL, max_hp INTEGER NOT NULL,
-            attack INTEGER NOT NULL, defense INTEGER NOT NULL,
-            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0,
+            user_id TEXT PRIMARY KEY,
+            level_index INTEGER NOT NULL,
+            spiritual_root TEXT NOT NULL,
+            experience INTEGER NOT NULL,
+            gold INTEGER NOT NULL,
+            last_check_in REAL NOT NULL,
+            state TEXT NOT NULL,
+            state_start_time REAL NOT NULL,
+            sect_id INTEGER,
+            sect_name TEXT,
+            hp INTEGER NOT NULL,
+            max_hp INTEGER NOT NULL,
+            attack INTEGER NOT NULL,
+            defense INTEGER NOT NULL,
+            realm_id TEXT,
+            realm_floor INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
@@ -146,6 +156,43 @@ async def _upgrade_v3_to_v4(conn: aiosqlite.Connection):
     if 'realm_id' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN realm_id TEXT")
     if 'realm_floor' not in columns: await conn.execute("ALTER TABLE players ADD COLUMN realm_floor INTEGER NOT NULL DEFAULT 0")
 
+@migration(5)
+async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
+    """升级数据库 v4 -> v5: 将 level(TEXT) 迁移到 level_index(INTEGER)"""
+    logger.info("开始执行 v4 -> v5 数据库迁移...")
+    
+    await conn.execute("ALTER TABLE players RENAME TO players_old_v4")
+    
+    await conn.execute("""
+        CREATE TABLE players (
+            user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
+            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
+            state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER,
+            sect_name TEXT, hp INTEGER NOT NULL, max_hp INTEGER NOT NULL,
+            attack INTEGER NOT NULL, defense INTEGER NOT NULL,
+            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (sect_id) REFERENCES sects (id)
+        )
+    """)
+    
+    level_name_to_index_map = {info['level_name']: info['index'] for info in config.level_data}
+    
+    async with conn.execute("SELECT * FROM players_old_v4") as cursor:
+        async for row in cursor:
+            old_data = dict(row)
+            level_name = old_data.pop('level')
+            level_index = level_name_to_index_map.get(level_name, 0)
+            
+            new_data = old_data
+            new_data['level_index'] = level_index
+            
+            columns = ", ".join(new_data.keys())
+            placeholders = ", ".join([f":{k}" for k in new_data.keys()])
+            await conn.execute(f"INSERT INTO players ({columns}) VALUES ({placeholders})", new_data)
+            
+    await conn.execute("DROP TABLE players_old_v4")
+    logger.info("v4 -> v5 数据库迁移完成！")
+
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
     async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
@@ -153,20 +200,15 @@ async def get_player_by_id(user_id: str) -> Optional[Player]:
         return Player(**dict(row)) if row else None
 
 async def create_player(player: Player):
-    """创建新玩家 (使用安全的具名参数)"""
-    # 获取Player dataclass的所有字段名
     player_fields = [f.name for f in fields(Player)]
-    # 构建SQL语句
     columns = ", ".join(player_fields)
     placeholders = ", ".join([f":{f}" for f in player_fields])
     sql = f"INSERT INTO players ({columns}) VALUES ({placeholders})"
     
-    # 将player对象转为字典作为参数
     await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
 
 async def update_player(player: Player):
-    """更新单个玩家 (使用动态生成的SQL语句)"""
     player_fields = [f.name for f in fields(Player) if f.name != 'user_id']
     set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
     sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
@@ -176,7 +218,6 @@ async def update_player(player: Player):
 
 
 async def update_players_in_transaction(players: List[Player]):
-    """在一个事务中批量更新多个玩家"""
     if not players:
         return
         
@@ -191,10 +232,6 @@ async def update_players_in_transaction(players: List[Player]):
     except aiosqlite.Error as e:
         logger.error(f"批量更新玩家事务失败: {e}")
         raise
-
-# --- Sect, Inventory, Transactional functions remain mostly the same ---
-# Omitted for brevity, as they were not part of the requested changes in the review.
-# The following are stubs for the unchanged functions to ensure the file is complete.
 
 async def create_sect(sect_name: str, leader_id: str) -> int:
     async with _db_connection.execute("INSERT INTO sects (name, leader_id) VALUES (?, ?)", (sect_name, leader_id)) as cursor:
@@ -230,11 +267,19 @@ async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
         inventory_list = []
         for row in rows:
             item_id, quantity = row['item_id'], row['quantity']
-            item_info = config.item_data.get(str(item_id), {})
-            inventory_list.append({
-                "item_id": item_id, "name": item_info.get("name", "未知物品"),
-                "quantity": quantity, "description": item_info.get("description", "无")
-            })
+            item_info = config.item_data.get(str(item_id))
+            if item_info:
+                 inventory_list.append({
+                    "item_id": item_id, "name": item_info.name,
+                    "quantity": quantity, "description": item_info.description,
+                    "rank": item_info.rank, "type": item_info.type
+                })
+            else:
+                inventory_list.append({
+                    "item_id": item_id, "name": f"未知物品(ID:{item_id})",
+                    "quantity": quantity, "description": "此物品信息已丢失",
+                    "rank": "未知", "type": "未知"
+                })
         return inventory_list
 
 async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
@@ -243,7 +288,6 @@ async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[s
         return dict(row) if row else None
 
 async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, int]):
-    """在一个事务中批量为用户添加多种物品"""
     try:
         async with _db_connection.transaction():
             for item_id, quantity in items.items():
@@ -256,7 +300,6 @@ async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, i
         raise
 
 async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
-    """从用户背包移除物品 (原子操作)"""
     try:
         async with _db_connection.transaction():
             cursor = await _db_connection.execute("""
@@ -265,7 +308,7 @@ async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int =
             """, (quantity, user_id, item_id, quantity))
             
             if cursor.rowcount == 0:
-                return False # 数量不足，事务自动回滚
+                return False
 
             await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
         return True

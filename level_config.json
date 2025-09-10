@@ -38,5 +38,105 @@
         "level_name": "筑基后期",
         "exp_needed": 50000,
         "success_rate": 0.4
+    },
+    {
+        "level_name": "搬血境",
+        "exp_needed": 100000,
+        "success_rate": 0.35
+    },
+    {
+        "level_name": "洞天境",
+        "exp_needed": 250000,
+        "success_rate": 0.3
+    },
+    {
+        "level_name": "化灵境",
+        "exp_needed": 500000,
+        "success_rate": 0.28
+    },
+    {
+        "level_name": "铭纹境",
+        "exp_needed": 800000,
+        "success_rate": 0.25
+    },
+    {
+        "level_name": "列阵境",
+        "exp_needed": 1200000,
+        "success_rate": 0.22
+    },
+    {
+        "level_name": "尊者境",
+        "exp_needed": 2000000,
+        "success_rate": 0.2
+    },
+    {
+        "level_name": "神火境",
+        "exp_needed": 3500000,
+        "success_rate": 0.18
+    },
+    {
+        "level_name": "真一境",
+        "exp_needed": 6000000,
+        "success_rate": 0.15
+    },
+    {
+        "level_name": "圣祭境",
+        "exp_needed": 10000000,
+        "success_rate": 0.12
+    },
+    {
+        "level_name": "天神境",
+        "exp_needed": 18000000,
+        "success_rate": 0.1
+    },
+    {
+        "level_name": "虚道境",
+        "exp_needed": 30000000,
+        "success_rate": 0.09
+    },
+    {
+        "level_name": "斩我境",
+        "exp_needed": 50000000,
+        "success_rate": 0.08
+    },
+    {
+        "level_name": "遁一境",
+        "exp_needed": 80000000,
+        "success_rate": 0.07
+    },
+    {
+        "level_name": "至尊境",
+        "exp_needed": 120000000,
+        "success_rate": 0.06
+    },
+    {
+        "level_name": "真仙境",
+        "exp_needed": 200000000,
+        "success_rate": 0.05
+    },
+    {
+        "level_name": "仙王境",
+        "exp_needed": 500000000,
+        "success_rate": 0.04
+    },
+    {
+        "level_name": "准仙帝",
+        "exp_needed": 1000000000,
+        "success_rate": 0.03
+    },
+    {
+        "level_name": "仙帝境",
+        "exp_needed": 2500000000,
+        "success_rate": 0.02
+    },
+    {
+        "level_name": "祭道境",
+        "exp_needed": 5000000000,
+        "success_rate": 0.01
+    },
+    {
+        "level_name": "祭道之上",
+        "exp_needed": 9999999999,
+        "success_rate": 0.001
     }
 ]

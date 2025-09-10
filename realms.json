@@ -2,29 +2,13 @@
     "1": {
         "id": "1",
         "name": "新手试炼洞窟",
-        "entry_cost": {
-            "gold": 50
-        },
+        "entry_cost": { "gold": 50 },
         "level_requirement": "炼气三层",
         "total_floors": 5,
         "events": [
-            {
-                "type": "monster",
-                "id": "mob_wolf",
-                "weight": 50
-            },
-            {
-                "type": "monster",
-                "id": "mob_bat",
-                "weight": 40
-            },
-            {
-                "type": "treasure",
-                "rewards": {
-                    "gold": 50
-                },
-                "weight": 10
-            }
+            { "type": "monster", "id": "mob_wolf", "weight": 50 },
+            { "type": "monster", "id": "mob_bat", "weight": 40 },
+            { "type": "treasure", "rewards": { "gold": 50 }, "weight": 10 }
         ],
         "boss_id": "boss_wolf_king"
     }

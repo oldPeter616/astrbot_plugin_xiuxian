@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List
 
 from astrbot.api import logger
+from .models import Item
 
 class Config:
     def __init__(self, base_dir: Path):
@@ -22,7 +23,7 @@ class Config:
 
         # --- 数据容器 ---
         self.level_data: List[dict] = []
-        self.item_data: Dict[str, dict] = {}
+        self.item_data: Dict[str, Item] = {} 
         self.boss_data: Dict[str, dict] = {}
         self.monster_data: Dict[str, dict] = {}
         self.realm_data: Dict[str, dict] = {}
@@ -122,9 +123,19 @@ class Config:
         # 境界数据
         self.level_map = {info["level_name"]: {"index": i, **info} 
                           for i, info in enumerate(self.level_data) if "level_name" in info}
+        
         # 物品数据
-        self.item_name_to_id = {info["name"]: item_id 
-                                for item_id, info in self.item_data.items() if "name" in info}
+        raw_item_data = self.item_data
+        self.item_data = {} # 清空，准备填充 Item 对象
+        for item_id, info in raw_item_data.items():
+            try:
+                # 使用 **info 将字典解包为 Item 的构造函数参数
+                self.item_data[item_id] = Item(id=item_id, **info)
+                if "name" in info:
+                    self.item_name_to_id[info["name"]] = item_id
+            except TypeError as e:
+                logger.error(f"加载物品 {item_id} 失败，配置项不匹配: {e}")
+
         # 秘境数据
         self.realm_name_to_id = {info["name"]: realm_id 
                                  for realm_id, info in self.realm_data.items() if "name" in info}
@@ -132,7 +143,7 @@ class Config:
         self.boss_name_to_id = {info["name"]: boss_id 
                                 for boss_id, info in self.boss_data.items() if "name" in info}
 
-    def get_item_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
+    def get_item_by_name(self, name: str) -> Optional[Tuple[str, Item]]: 
         item_id = self.item_name_to_id.get(name)
         return (item_id, self.item_data[item_id]) if item_id else None
 

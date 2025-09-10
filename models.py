@@ -5,10 +5,21 @@ from dataclasses import dataclass, field, replace
 from typing import Optional, List, Dict, Any
 
 @dataclass
+class Item:
+    """物品数据模型"""
+    id: str
+    name: str
+    type: str  # 丹药, 材料, 法器, 功法
+    rank: str  # 凡品, 珍品, 极品, 仙品, 圣品, 帝品 
+    description: str
+    price: int
+    effect: Optional[Dict[str, Any]] = None
+
+@dataclass
 class Player:
     """玩家数据模型"""
     user_id: str
-    level: str = "炼气一层"
+    level_index: int = 0  
     spiritual_root: str = "未知"
     experience: int = 0
     gold: int = 0
@@ -23,6 +34,15 @@ class Player:
     defense: int = 5
     realm_id: Optional[str] = None
     realm_floor: int = 0
+
+    @property
+    def level(self) -> str:
+        # 为了兼容旧代码和方便模板渲染，提供一个 level 属性的只读方法
+        # 注意: 这需要 config_manager 先被加载
+        from .config_manager import config
+        if 0 <= self.level_index < len(config.level_data):
+            return config.level_data[self.level_index]['level_name']
+        return "未知境界"
 
     def clone(self) -> 'Player':
         return replace(self)
