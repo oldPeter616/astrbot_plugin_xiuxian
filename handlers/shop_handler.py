@@ -38,23 +38,15 @@ class ShopHandler:
 
     @filter.command(config.CMD_BUY, "购买物品")
     @player_required
-    async def handle_buy(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split()
-        if len(parts) < 2:
-            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_BUY} <物品名> [数量]」。")
+    @parse_args(str, int, optional=1)
+    async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):        
+        # 如果数量未提供，默认为1
+        if quantity is None:
+            quantity = 1
+            
+        if quantity <= 0:
+            yield event.plain_result("购买数量必须是正整数。")
             return
-
-        item_name = parts[1]
-        quantity = 1
-        if len(parts) > 2:
-            try:
-                quantity = int(parts[2])
-                if quantity <= 0:
-                    yield event.plain_result("购买数量必须是正整数。")
-                    return
-            except ValueError:
-                yield event.plain_result("购买数量必须是有效的数字。")
-                return
 
         item_to_buy = config.get_item_by_name(item_name)
         if not item_to_buy:
@@ -67,7 +59,8 @@ class ShopHandler:
         success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
-            yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。")
+            new_gold = player.gold - total_cost
+            yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {new_gold}。")
         else:
             if reason == "ERROR_INSUFFICIENT_FUNDS":
                 yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。")
@@ -76,24 +69,16 @@ class ShopHandler:
 
     @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
     @player_required
-    async def handle_use(self, event: AstrMessageEvent, player: Player):
-        parts = event.message_str.strip().split()
-        if len(parts) < 2:
-            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_USE_ITEM} <物品名> [数量]」。")
-            return
+    @parse_args(str, int, optional=1)
+    async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):
+        # 如果数量未提供，默认为1
+        if quantity is None:
+            quantity = 1
 
-        item_name = parts[1]
-        quantity = 1
-        if len(parts) > 2:
-            try:
-                quantity = int(parts[2])
-                if quantity <= 0:
-                    yield event.plain_result("使用数量必须是正整数。")
-                    return
-            except ValueError:
-                yield event.plain_result("使用数量必须是有效的数字。")
-                return
-                
+        if quantity <= 0:
+            yield event.plain_result("使用数量必须是正整数。")
+            return
+            
         item_to_use = config.get_item_by_name(item_name)
         if not item_to_use:
             yield event.plain_result(f"背包中似乎没有名为「{item_name}」的物品。")

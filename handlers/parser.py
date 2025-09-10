@@ -1,8 +1,8 @@
 # handlers/parser.py
-# 新增：通用指令参数解析器
+# 通用指令参数解析器
 
 from functools import wraps
-from typing import Callable, Any, List, Optional
+from typing import Callable, Any, List
 from astrbot.api.event import AstrMessageEvent
 
 def parse_args(*types: Callable[[str], Any], sep: str = ' ', optional: int = 0):
@@ -18,9 +18,14 @@ def parse_args(*types: Callable[[str], Any], sep: str = ' ', optional: int = 0):
         @wraps(func)
         async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
             parts = event.message_str.strip().split(sep, 1)
-            arg_str = parts[1] if len(parts) > 1 else ""
-            raw_args: List[str] = [arg.strip() for arg in arg_str.split(sep) if arg.strip()]
+            # 更简洁地处理无参数的情况
+            arg_str = parts[1].strip() if len(parts) > 1 else ""
             
+            if not arg_str:
+                raw_args: List[str] = []
+            else:
+                raw_args = [arg.strip() for arg in arg_str.split(sep) if arg.strip()]
+
             min_expected_args = len(types) - optional
             if len(raw_args) < min_expected_args:
                 yield event.plain_result(f"指令格式错误，至少需要 {min_expected_args} 个参数，但只提供了 {len(raw_args)} 个。")
@@ -39,7 +44,6 @@ def parse_args(*types: Callable[[str], Any], sep: str = ' ', optional: int = 0):
                     # 补充None给未提供的可选参数
                     parsed_args.append(None)
             
-            # 将解析后的参数作为新的 *args 传递
             async for result in func(self, event, *parsed_args, *args, **kwargs):
                 yield result
 

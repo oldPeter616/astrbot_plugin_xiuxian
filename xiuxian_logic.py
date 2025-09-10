@@ -204,9 +204,12 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-def handle_pvp(attacker: Player, defender: Player) -> str:
-    """处理PVP逻辑，并返回战报"""
-    # 直接调用同步函数，不再需要await
-    _, _, combat_log = combat_manager.player_vs_player(attacker, defender)
+async def handle_pvp(attacker: Player, defender: Player) -> str:
+    """处理PVP逻辑，并返回战报 (异步)"""
+    # 非阻塞地执行同步战斗函数
+    loop = asyncio.get_running_loop()
+    _, _, combat_log = await loop.run_in_executor(
+        None, combat_manager.player_vs_player, attacker, defender
+    )
     report = "\n".join(combat_log)
     return report

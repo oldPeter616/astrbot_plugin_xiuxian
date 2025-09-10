@@ -1,3 +1,5 @@
+# handlers/sect_handler.py
+
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
 from .parser import parse_args
@@ -19,7 +21,7 @@ class SectHandler:
             return
             
         success, msg, updated_player = await xiuxian_logic.handle_create_sect(player, sect_name)
-        if success:
+        if success and updated_player:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -32,7 +34,7 @@ class SectHandler:
             return
 
         success, msg, updated_player = await xiuxian_logic.handle_join_sect(player, sect_name)
-        if success:
+        if success and updated_player:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -40,7 +42,7 @@ class SectHandler:
     @player_required
     async def handle_leave_sect(self, event: AstrMessageEvent, player: Player):
         success, msg, updated_player = await xiuxian_logic.handle_leave_sect(player)
-        if success:
+        if success and updated_player:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -61,7 +63,9 @@ class SectHandler:
 
         leader_player = await data_manager.get_player_by_id(sect_info['leader_id'])
         leader_info = "宗主: (信息丢失)"
-        if leader_player and leader_player.user_id:
+        
+        # 增加交叉验证：确保获取到的玩家不仅存在，而且其sect_id与当前宗门id一致
+        if leader_player and leader_player.user_id and leader_player.sect_id == sect_info['id']:
             leader_info = f"宗主: {leader_player.user_id[-4:]}"
 
         members = await data_manager.get_sect_members(player.sect_id)
