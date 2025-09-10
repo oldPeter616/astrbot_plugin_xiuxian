@@ -37,8 +37,9 @@ class CombatHandler:
             yield event.plain_result("对方气血不满，此时挑战非君子所为。")
             return
 
-        # 调用已改为同步的函数
-        report = xiuxian_logic.handle_pvp(attacker, defender)
+        # 调用已改为异步的函数
+        # 修正后
+        report = await xiuxian_logic.handle_pvp(attacker, defender)
         yield event.plain_result(report)
 
     @filter.command(config.CMD_START_BOSS_FIGHT, "开启一场世界Boss讨伐战")

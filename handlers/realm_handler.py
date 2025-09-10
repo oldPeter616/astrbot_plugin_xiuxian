@@ -36,7 +36,7 @@ class RealmHandler:
             return
 
         target_realm_id, _ = realm_found
-        success, msg, updated_player = self.realm_manager.start_session(player, target_realm_id)
+        success, msg, updated_player = await self.realm_manager.start_session(player, target_realm_id)
 
         if success:
             await data_manager.update_player(updated_player)
