@@ -3,7 +3,7 @@
 import aiosqlite
 from typing import Dict, Any, Callable, Awaitable
 from astrbot.api import logger
-from astrbot.api.star import Context, Star, on_command
+from astrbot.api.star import Context, Star
 from astrbot.api.event import AstrMessageEvent
 
 from . import combat_manager, realm_manager, data_manager
@@ -33,9 +33,6 @@ class XiuXianPlugin(Star):
             "misc": MiscHandler(),
         }
 
-        # 3. 显式指令注册表
-        # self.command_map: Dict[str, XiuXianPlugin.HandlerMethod] = {}
-        # self._register_handlers()
         # AstrBot V11的指令发现机制已足够完善，不再需要手动注册和分发
         # 直接在Handler的方法上使用 @filter.command 即可
 
