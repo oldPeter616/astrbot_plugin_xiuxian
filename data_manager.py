@@ -11,6 +11,7 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from .config_manager import config
+# 导入仍然保留，因为函数体内部会使用
 from .models import Player, PlayerEffect, Item, WorldBossStatus, Boss
 
 DATA_DIR = StarTools.get_data_dir("xiuxian")
@@ -318,4 +319,98 @@ async def update_player_sect(user_id: str, sect_id: Optional[int], sect_name: Op
     await _db_connection.commit()
 
 async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
-    async with _
+    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
+        rows = await cursor.fetchall()
+        inventory_list = []
+        for row in rows:
+            item_id, quantity = row['item_id'], row['quantity']
+            item_info = config.item_data.get(str(item_id))
+            if item_info:
+                 inventory_list.append({
+                    "item_id": item_id, "name": item_info.name,
+                    "quantity": quantity, "description": item_info.description,
+                    "rank": item_info.rank, "type": item_info.type
+                })
+            else:
+                inventory_list.append({
+                    "item_id": item_id, "name": f"未知物品(ID:{item_id})",
+                    "quantity": quantity, "description": "此物品信息已丢失",
+                    "rank": "未知", "type": "未知"
+                })
+        return inventory_list
+
+async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, int]):
+    try:
+        async with _db_connection.transaction():
+            for item_id, quantity in items.items():
+                await _db_connection.execute("""
+                    INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+                    ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
+                """, (user_id, item_id, quantity))
+    except aiosqlite.Error as e:
+        logger.error(f"批量添加物品事务失败: {e}")
+        raise
+
+async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
+    try:
+        async with _db_connection.transaction():
+            cursor = await _db_connection.execute("""
+                UPDATE inventory SET quantity = quantity - ? 
+                WHERE user_id = ? AND item_id = ? AND quantity >= ?
+            """, (quantity, user_id, item_id, quantity))
+            
+            if cursor.rowcount == 0:
+                return False
+
+            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+        return True
+    except aiosqlite.Error as e:
+        logger.error(f"移除物品事务失败: {e}")
+        return False
+        
+async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> Tuple[bool, str]:
+    try:
+        async with _db_connection.transaction():
+            cursor = await _db_connection.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (total_cost, user_id, total_cost)
+            )
+            if cursor.rowcount == 0:
+                return False, "ERROR_INSUFFICIENT_FUNDS"
+            await _db_connection.execute("""
+                INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+                ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
+            """, (user_id, item_id, quantity))
+        return True, "SUCCESS"
+    except aiosqlite.Error as e:
+        logger.error(f"购买物品事务失败: {e}")
+        return False, "ERROR_DATABASE"
+
+async def transactional_apply_item_effect(user_id: str, item_id: str, quantity: int, effect: 'PlayerEffect') -> bool:
+    try:
+        async with _db_connection.transaction():
+            cursor = await _db_connection.execute(
+                "UPDATE inventory SET quantity = quantity - ? WHERE user_id = ? AND item_id = ? AND quantity >= ?",
+                (quantity, user_id, item_id, quantity)
+            )
+            if cursor.rowcount == 0: return False
+            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
+            await _db_connection.execute(
+                """
+                UPDATE players 
+                SET experience = experience + ?,
+                    gold = gold + ?,
+                    hp = MIN(max_hp, hp + ?)
+                WHERE user_id = ?
+                """,
+                (effect.experience, effect.gold, effect.hp, user_id)
+            )
+        return True
+    except aiosqlite.Error as e:
+        logger.error(f"使用物品事务失败: {e}")
+        return False
