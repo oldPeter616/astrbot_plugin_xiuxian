@@ -230,7 +230,7 @@ async def get_top_players(limit: int) -> List[Player]:
         rows = await cursor.fetchall()
         return [Player(**dict(row)) for row in rows]
 
-async def get_world_boss() -> Optional[WorldBossStatus]:
+async def get_world_boss() -> Optional['WorldBossStatus']:
     """获取当前的世界Boss状态"""
     async with _db_connection.execute("SELECT * FROM world_boss WHERE id = 1") as cursor:
         row = await cursor.fetchone()
