@@ -29,7 +29,7 @@ class Config:
         self.monster_data: Dict[str, dict] = {}
         self.realm_data: Dict[str, dict] = {}
         self.tag_data: Dict[str, dict] = {}
-        
+
         # --- 预处理数据映射 ---
         self.level_map: Dict[str, dict] = {}
         self.item_name_to_id: Dict[str, str] = {}
@@ -53,8 +53,7 @@ class Config:
         self.CMD_LEAVE_SECT = "退出宗门"
         self.CMD_USE_ITEM = "使用"
         self.CMD_SPAR = "切磋"
-        self.CMD_WORLD_BOSS = "讨伐世界boss" # 新增默认声明
-        self.CMD_JOIN_FIGHT = "加入战斗" # 保留旧的，以防万一
+        self.CMD_WORLD_BOSS = "讨伐世界boss"  # 新增此处的默认声明
         self.CMD_ATTACK_BOSS = "攻击"
         self.CMD_FIGHT_STATUS = "战斗状态"
         self.CMD_REALM_LIST = "秘境列表"
@@ -62,7 +61,8 @@ class Config:
         self.CMD_REALM_ADVANCE = "前进"
         self.CMD_LEAVE_REALM = "离开秘境"
         self.CMD_HELP = "修仙帮助"
-        
+        self.CMD_JOIN_FIGHT = "加入战斗" # 为兼容旧配置保留
+
         # 数值
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50
@@ -72,7 +72,7 @@ class Config:
         self.CREATE_SECT_COST = 5000
         self.WORLD_BOSS_TEMPLATE_ID = "1"
         self.WORLD_BOSS_TOP_PLAYERS_AVG = 5
-        
+
         # 游戏规则
         self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
 
@@ -100,20 +100,20 @@ class Config:
             try:
                 with open(self._paths["config"], 'r', encoding='utf-8') as f:
                     main_cfg = json.load(f)
-                
+
+                # 遍历所有分类，安全地更新属性
                 for category_name, category_data in main_cfg.items():
-                    if category_name == "COMMANDS":
+                    if isinstance(category_data, dict):
                         for key, value in category_data.items():
                             if hasattr(self, key):
                                 setattr(self, key, value)
-                    elif category_name == "VALUES":
-                         for key, value in category_data.items():
-                            if hasattr(self, key):
-                                setattr(self, key, value)
+                            else:
+                                logger.warning(f"主配置文件中的未知配置项 '{key}' 将被忽略。")
                 logger.info("成功加载主配置文件 config.json。")
             except Exception as e:
                 logger.error(f"加载主配置文件 config.json 失败: {e}")
-        
+
+        # 加载其他数据文件
         self._load_json_data(self._paths["level"], "level_data", "境界")
         self._load_json_data(self._paths["item"], "item_data", "物品")
         self._load_json_data(self._paths["boss"], "boss_data", "Boss")
@@ -125,9 +125,9 @@ class Config:
 
     def _post_process_data(self):
         """预处理所有数据，建立名称到ID的映射以优化性能"""
-        self.level_map = {info["level_name"]: {"index": i, **info} 
+        self.level_map = {info["level_name"]: {"index": i, **info}
                           for i, info in enumerate(self.level_data) if "level_name" in info}
-        
+
         raw_item_data = self.item_data
         self.item_data = {}
         for item_id, info in raw_item_data.items():
@@ -138,12 +138,12 @@ class Config:
             except TypeError as e:
                 logger.error(f"加载物品 {item_id} 失败，配置项不匹配: {e}")
 
-        self.realm_name_to_id = {info["name"]: realm_id 
+        self.realm_name_to_id = {info["name"]: realm_id
                                  for realm_id, info in self.realm_data.items() if "name" in info}
-        self.boss_name_to_id = {info["name"]: boss_id 
+        self.boss_name_to_id = {info["name"]: boss_id
                                 for boss_id, info in self.boss_data.items() if "name" in info}
 
-    def get_item_by_name(self, name: str) -> Optional[Tuple[str, Item]]: 
+    def get_item_by_name(self, name: str) -> Optional[Tuple[str, Item]]:
         item_id = self.item_name_to_id.get(name)
         return (item_id, self.item_data[item_id]) if item_id else None
 
