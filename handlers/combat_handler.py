@@ -1,6 +1,5 @@
 from astrbot.api.event import AstrMessageEvent, filter
 from .decorator import player_required
-from .parser import parse_args
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -34,26 +33,15 @@ class CombatHandler:
         report = await xiuxian_logic.handle_pvp(attacker, defender)
         yield event.plain_result(report)
 
-
     @filter.command(config.CMD_WORLD_BOSS, "挑战或查看当前的世界Boss")
     @player_required
     async def handle_world_boss(self, event: AstrMessageEvent, player: Player):
-        """
-        新的核心指令，用于加入和攻击世界Boss。
-        不再需要参数。
-        """
-        # 确保Boss存在并获取其状态
         boss, status_msg = await self.battle_manager.ensure_boss_exists_and_get_status()
         if not boss:
             yield event.plain_result(status_msg)
             return
-
-        # 首次交互时，只显示状态
         yield event.plain_result(status_msg)
-        
-        # 提示玩家如何攻击
         yield event.plain_result(f"发送「{config.CMD_ATTACK_BOSS}」对它造成伤害！")
-
 
     @filter.command(config.CMD_ATTACK_BOSS, "攻击当前的世界Boss")
     @player_required
@@ -61,13 +49,7 @@ class CombatHandler:
         result_msg = await self.battle_manager.player_attack(player)
         yield event.plain_result(result_msg)
 
-
     @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")
     async def handle_fight_status(self, event: AstrMessageEvent):
         _, status_report = await self.battle_manager.ensure_boss_exists_and_get_status()
         yield event.plain_result(status_report)
-
-    # 废弃的指令，可以删除或保留为空实现
-    @filter.command(config.CMD_JOIN_FIGHT, "加入当前的Boss战")
-    async def handle_join_fight(self, event: AstrMessageEvent):
-       yield event.plain_result(f"此指令已更新，请使用「{config.CMD_WORLD_BOSS}」查看并参与战斗。")
