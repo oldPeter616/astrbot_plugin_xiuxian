@@ -1,6 +1,7 @@
 # data_manager.py
 # 数据管理模块，负责所有数据库操作
 
+import time
 import aiosqlite
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable, Awaitable
@@ -10,29 +11,25 @@ from astrbot.api import logger
 from astrbot.api.star import StarTools
 
 from .config_manager import config
-from .models import Player, PlayerEffect, Item
+from .models import Player, PlayerEffect, Item, WorldBossStatus, Boss
 
 DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-LATEST_DB_VERSION = 7 # 版本号提升
+LATEST_DB_VERSION = 7
 
-# --- 迁移任务注册表 ---
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection], Awaitable[None]]] = {}
 
 def migration(version: int):
-    """注册数据库迁移任务的装饰器"""
     def decorator(func: Callable[[aiosqlite.Connection], Awaitable[None]]):
         MIGRATION_TASKS[version] = func
         return func
     return decorator
 
-# --- 连接核心 ---
 _db_connection: Optional[aiosqlite.Connection] = None
 
 async def init_db_pool():
-    """初始化数据库连接，并执行数据库迁移"""
     global _db_connection
     if _db_connection is None:
         _db_connection = await aiosqlite.connect(DB_PATH)
@@ -41,7 +38,6 @@ async def init_db_pool():
         await migrate_database()
 
 async def close_db_pool():
-    """关闭数据库连接"""
     global _db_connection
     if _db_connection:
         await _db_connection.close()
@@ -49,24 +45,19 @@ async def close_db_pool():
         logger.info("数据库连接已关闭。")
 
 async def migrate_database():
-    """检查并执行数据库迁移"""
     await _db_connection.execute("PRAGMA foreign_keys = ON")
-
     async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
             logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v6(_db_connection) # 直接使用最新建表函数
+            await _create_all_tables_v7(_db_connection)
             await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
             await _db_connection.commit()
             logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
             return
-
     async with _db_connection.execute("SELECT version FROM db_info") as cursor:
         row = await cursor.fetchone()
         current_version = row[0] if row else 0
-    
     logger.info(f"当前数据库版本: v{current_version}, 最新版本: v{LATEST_DB_VERSION}")
-
     if current_version < LATEST_DB_VERSION:
         logger.info("检测到数据库需要升级...")
         for version in sorted(MIGRATION_TASKS.keys()):
@@ -86,7 +77,6 @@ async def migrate_database():
         logger.info("数据库结构已是最新。")
 
 async def _create_all_tables_v7(conn: aiosqlite.Connection):
-    """创建版本7（最新）的所有表结构"""
     await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS sects (
@@ -112,7 +102,6 @@ async def _create_all_tables_v7(conn: aiosqlite.Connection):
             UNIQUE(user_id, item_id)
         )
     """)
-    # 新增表
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS world_boss (
             id INTEGER PRIMARY KEY, boss_template_id TEXT NOT NULL, current_hp INTEGER NOT NULL,
@@ -157,11 +146,8 @@ async def _upgrade_v3_to_v4(conn: aiosqlite.Connection):
 
 @migration(5)
 async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
-    """升级数据库 v4 -> v5: 将 level(TEXT) 迁移到 level_index(INTEGER)"""
     logger.info("开始执行 v4 -> v5 数据库迁移...")
-    
     await conn.execute("ALTER TABLE players RENAME TO players_old_v4")
-    
     await conn.execute("""
         CREATE TABLE players (
             user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
@@ -173,41 +159,31 @@ async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
             FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
-    
-    level_name_to_index_map = {info['level_name']: info['index'] for info in config.level_data}
-    
+    level_name_to_index_map = {info['level_name']: i for i, info in enumerate(config.level_data)}
     async with conn.execute("SELECT * FROM players_old_v4") as cursor:
         async for row in cursor:
             old_data = dict(row)
             level_name = old_data.pop('level')
             level_index = level_name_to_index_map.get(level_name, 0)
-            
             new_data = old_data
             new_data['level_index'] = level_index
-            
             columns = ", ".join(new_data.keys())
             placeholders = ", ".join([f":{k}" for k in new_data.keys()])
             await conn.execute(f"INSERT INTO players ({columns}) VALUES ({placeholders})", new_data)
-            
     await conn.execute("DROP TABLE players_old_v4")
     logger.info("v4 -> v5 数据库迁移完成！")
 
 @migration(6)
 async def _upgrade_v5_to_v6(conn: aiosqlite.Connection):
-    """升级数据库 v5 -> v6: 添加 realm_data 字段"""
     logger.info("开始执行 v5 -> v6 数据库迁移...")
     cursor = await conn.execute("PRAGMA table_info(players)")
     columns = [row['name'] for row in await cursor.fetchall()]
     if 'realm_data' not in columns:
         await conn.execute("ALTER TABLE players ADD COLUMN realm_data TEXT")
-        logger.info("已为 'players' 表添加 'realm_data' 字段。")
-    else:
-        logger.info("'realm_data' 字段已存在，跳过添加。")
     logger.info("v5 -> v6 数据库迁移完成！")
 
 @migration(7)
 async def _upgrade_v6_to_v7(conn: aiosqlite.Connection):
-    """升级数据库 v6 -> v7: 新增 world_boss 相关表"""
     logger.info("开始执行 v6 -> v7 数据库迁移...")
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS world_boss (
@@ -222,8 +198,8 @@ async def _upgrade_v6_to_v7(conn: aiosqlite.Connection):
     """)
     logger.info("v6 -> v7 数据库迁移完成！")
 
-async def get_top_players(limit: int) -> List[Player]:
-    """获取等级最高的N个玩家"""
+
+async def get_top_players(limit: int) -> List['Player']:
     async with _db_connection.execute(
         "SELECT * FROM players ORDER BY level_index DESC, experience DESC LIMIT ?", (limit,)
     ) as cursor:
@@ -231,13 +207,11 @@ async def get_top_players(limit: int) -> List[Player]:
         return [Player(**dict(row)) for row in rows]
 
 async def get_world_boss() -> Optional['WorldBossStatus']:
-    """获取当前的世界Boss状态"""
     async with _db_connection.execute("SELECT * FROM world_boss WHERE id = 1") as cursor:
         row = await cursor.fetchone()
         return WorldBossStatus(**dict(row)) if row else None
 
-async def create_world_boss(boss: Boss) -> WorldBossStatus:
-    """在数据库中创建新的世界Boss记录"""
+async def create_world_boss(boss: 'Boss') -> 'WorldBossStatus':
     generated_at = time.time()
     async with _db_connection.execute(
         "INSERT INTO world_boss (id, boss_template_id, current_hp, max_hp, generated_at) VALUES (1, ?, ?, ?, ?)",
@@ -246,42 +220,33 @@ async def create_world_boss(boss: Boss) -> WorldBossStatus:
         await _db_connection.commit()
         return WorldBossStatus(id=1, boss_template_id=boss.id, current_hp=boss.hp, max_hp=boss.max_hp, generated_at=generated_at)
 
-async def transactional_attack_world_boss(player: Player, damage: int) -> Tuple[bool, int]:
-    """事务性地攻击Boss并更新玩家伤害"""
+async def transactional_attack_world_boss(player: 'Player', damage: int) -> Tuple[bool, int]:
     try:
         async with _db_connection.transaction():
-            # 更新Boss血量
             cursor = await _db_connection.execute(
                 "UPDATE world_boss SET current_hp = current_hp - ? WHERE id = 1 AND current_hp > 0",
                 (damage,)
             )
             if cursor.rowcount == 0:
-                return False, 0 # Boss已被击败或不存在
-
-            # 获取更新后的血量
+                return False, 0
             async with _db_connection.execute("SELECT current_hp FROM world_boss WHERE id = 1") as c:
                 row = await c.fetchone()
                 new_hp = row[0] if row else 0
-
-            # 更新玩家伤害
             await _db_connection.execute("""
                 INSERT INTO world_boss_participants (user_id, total_damage) VALUES (?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET total_damage = total_damage + excluded.total_damage;
             """, (player.user_id, damage))
-        
         return True, new_hp
     except aiosqlite.Error as e:
         logger.error(f"攻击世界Boss事务失败: {e}")
         return False, 0
 
 async def get_all_boss_participants() -> List[Dict[str, Any]]:
-    """获取所有参与者的伤害数据"""
     async with _db_connection.execute("SELECT user_id, total_damage FROM world_boss_participants ORDER BY total_damage DESC") as cursor:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 async def clear_world_boss_data():
-    """清理世界Boss及其参与者数据"""
     try:
         async with _db_connection.transaction():
             await _db_connection.execute("DELETE FROM world_boss")
@@ -290,36 +255,32 @@ async def clear_world_boss_data():
     except aiosqlite.Error as e:
         logger.error(f"清理世界Boss数据失败: {e}")
 
-async def get_player_by_id(user_id: str) -> Optional[Player]:
+async def get_player_by_id(user_id: str) -> Optional['Player']:
     async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
         row = await cursor.fetchone()
         return Player(**dict(row)) if row else None
 
-async def create_player(player: Player):
+async def create_player(player: 'Player'):
     player_fields = [f.name for f in fields(Player)]
     columns = ", ".join(player_fields)
     placeholders = ", ".join([f":{f}" for f in player_fields])
     sql = f"INSERT INTO players ({columns}) VALUES ({placeholders})"
-    
     await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
 
-async def update_player(player: Player):
+async def update_player(player: 'Player'):
     player_fields = [f.name for f in fields(Player) if f.name != 'user_id']
     set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
     sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
-
     await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
 
-async def update_players_in_transaction(players: List[Player]):
+async def update_players_in_transaction(players: List['Player']):
     if not players:
         return
-        
     player_fields = [f.name for f in fields(Player) if f.name != 'user_id']
     set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
     sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
-    
     try:
         async with _db_connection.transaction():
             for player in players:
@@ -347,7 +308,7 @@ async def get_sect_by_id(sect_id: int) -> Optional[Dict[str, Any]]:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-async def get_sect_members(sect_id: int) -> List[Player]:
+async def get_sect_members(sect_id: int) -> List['Player']:
     async with _db_connection.execute("SELECT * FROM players WHERE sect_id = ?", (sect_id,)) as cursor:
         rows = await cursor.fetchall()
         return [Player(**dict(row)) for row in rows]
@@ -357,98 +318,4 @@ async def update_player_sect(user_id: str, sect_id: Optional[int], sect_name: Op
     await _db_connection.commit()
 
 async def get_inventory_by_user_id(user_id: str) -> List[Dict[str, Any]]:
-    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
-        rows = await cursor.fetchall()
-        inventory_list = []
-        for row in rows:
-            item_id, quantity = row['item_id'], row['quantity']
-            item_info = config.item_data.get(str(item_id))
-            if item_info:
-                 inventory_list.append({
-                    "item_id": item_id, "name": item_info.name,
-                    "quantity": quantity, "description": item_info.description,
-                    "rank": item_info.rank, "type": item_info.type
-                })
-            else:
-                inventory_list.append({
-                    "item_id": item_id, "name": f"未知物品(ID:{item_id})",
-                    "quantity": quantity, "description": "此物品信息已丢失",
-                    "rank": "未知", "type": "未知"
-                })
-        return inventory_list
-
-async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[str, Any]]:
-    async with _db_connection.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id)) as cursor:
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, int]):
-    try:
-        async with _db_connection.transaction():
-            for item_id, quantity in items.items():
-                await _db_connection.execute("""
-                    INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-                    ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
-                """, (user_id, item_id, quantity))
-    except aiosqlite.Error as e:
-        logger.error(f"批量添加物品事务失败: {e}")
-        raise
-
-async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
-    try:
-        async with _db_connection.transaction():
-            cursor = await _db_connection.execute("""
-                UPDATE inventory SET quantity = quantity - ? 
-                WHERE user_id = ? AND item_id = ? AND quantity >= ?
-            """, (quantity, user_id, item_id, quantity))
-            
-            if cursor.rowcount == 0:
-                return False
-
-            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
-        return True
-    except aiosqlite.Error as e:
-        logger.error(f"移除物品事务失败: {e}")
-        return False
-        
-async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> Tuple[bool, str]:
-    try:
-        async with _db_connection.transaction():
-            cursor = await _db_connection.execute(
-                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
-                (total_cost, user_id, total_cost)
-            )
-            if cursor.rowcount == 0:
-                return False, "ERROR_INSUFFICIENT_FUNDS"
-            await _db_connection.execute("""
-                INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-                ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity;
-            """, (user_id, item_id, quantity))
-        return True, "SUCCESS"
-    except aiosqlite.Error as e:
-        logger.error(f"购买物品事务失败: {e}")
-        return False, "ERROR_DATABASE"
-
-async def transactional_apply_item_effect(user_id: str, item_id: str, quantity: int, effect: PlayerEffect) -> bool:
-    try:
-        async with _db_connection.transaction():
-            cursor = await _db_connection.execute(
-                "UPDATE inventory SET quantity = quantity - ? WHERE user_id = ? AND item_id = ? AND quantity >= ?",
-                (quantity, user_id, item_id, quantity)
-            )
-            if cursor.rowcount == 0: return False
-            await _db_connection.execute("DELETE FROM inventory WHERE user_id = ? AND item_id = ? AND quantity <= 0", (user_id, item_id))
-            await _db_connection.execute(
-                """
-                UPDATE players 
-                SET experience = experience + ?,
-                    gold = gold + ?,
-                    hp = MIN(max_hp, hp + ?)
-                WHERE user_id = ?
-                """,
-                (effect.experience, effect.gold, effect.hp, user_id)
-            )
-        return True
-    except aiosqlite.Error as e:
-        logger.error(f"使用物品事务失败: {e}")
-        return False
+    async with _
