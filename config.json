@@ -1,6 +1,6 @@
 {
     "COMMANDS": {
-        "CMD_START_XIUXIAN": "我要修仙",
+        "CMD_WORLD_BOSS": "讨伐世界boss",
         "CMD_PLAYER_INFO": "我的信息",
         "CMD_CHECK_IN": "签到",
         "CMD_START_CULTIVATION": "闭关",
@@ -15,7 +15,6 @@
         "CMD_LEAVE_SECT": "退出宗门",
         "CMD_USE_ITEM": "使用",
         "CMD_SPAR": "切磋",
-        "CMD_START_BOSS_FIGHT": "讨伐",
         "CMD_JOIN_FIGHT": "加入战斗",
         "CMD_ATTACK_BOSS": "攻击",
         "CMD_FIGHT_STATUS": "战斗状态",
@@ -31,7 +30,9 @@
         "CHECK_IN_REWARD_MAX": 200,
         "BASE_EXP_PER_MINUTE": 10,
         "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": 0.1,
-        "CREATE_SECT_COST": 5000
+        "CREATE_SECT_COST": 5000,
+        "WORLD_BOSS_TEMPLATE_ID": "1",
+        "WORLD_BOSS_TOP_PLAYERS_AVG": 5
     },
     "FILES": {
         "DATABASE_FILE": "xiuxian_data.db"

@@ -18,7 +18,8 @@ class Config:
             "item": base_dir / "items.json",
             "boss": base_dir / "bosses.json",
             "monster": base_dir / "monsters.json",
-            "realm": base_dir / "realms.json"
+            "realm": base_dir / "realms.json",
+            "tag": base_dir / "tags.json"
         }
 
         # --- 数据容器 ---
@@ -27,6 +28,7 @@ class Config:
         self.boss_data: Dict[str, dict] = {}
         self.monster_data: Dict[str, dict] = {}
         self.realm_data: Dict[str, dict] = {}
+        self.tag_data: Dict[str, dict] = {}
         
         # --- 预处理数据映射 ---
         self.level_map: Dict[str, dict] = {}
@@ -115,6 +117,7 @@ class Config:
         self._load_json_data(self._paths["boss"], "boss_data", "Boss")
         self._load_json_data(self._paths["monster"], "monster_data", "怪物")
         self._load_json_data(self._paths["realm"], "realm_data", "秘境")
+        self._load_json_data(self._paths["tag"], "tag_data", "标签") 
 
         self._post_process_data()
 

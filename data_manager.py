@@ -16,7 +16,7 @@ DATA_DIR = StarTools.get_data_dir("xiuxian")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / config.DATABASE_FILE
 
-LATEST_DB_VERSION = 5
+LATEST_DB_VERSION = 7 # 版本号提升
 
 # --- 迁移任务注册表 ---
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection], Awaitable[None]]] = {}
@@ -55,7 +55,7 @@ async def migrate_database():
     async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
             logger.info("未检测到数据库版本，将进行全新安装...")
-            await _create_all_tables_v5(_db_connection)
+            await _create_all_tables_v6(_db_connection) # 直接使用最新建表函数
             await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
             await _db_connection.commit()
             logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -85,9 +85,8 @@ async def migrate_database():
     else:
         logger.info("数据库结构已是最新。")
 
-
-async def _create_all_tables_v5(conn: aiosqlite.Connection):
-    """创建版本5（最新）的所有表结构"""
+async def _create_all_tables_v7(conn: aiosqlite.Connection):
+    """创建版本7（最新）的所有表结构"""
     await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS sects (
@@ -98,31 +97,31 @@ async def _create_all_tables_v5(conn: aiosqlite.Connection):
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
-            user_id TEXT PRIMARY KEY,
-            level_index INTEGER NOT NULL,
-            spiritual_root TEXT NOT NULL,
-            experience INTEGER NOT NULL,
-            gold INTEGER NOT NULL,
-            last_check_in REAL NOT NULL,
-            state TEXT NOT NULL,
-            state_start_time REAL NOT NULL,
-            sect_id INTEGER,
-            sect_name TEXT,
-            hp INTEGER NOT NULL,
-            max_hp INTEGER NOT NULL,
-            attack INTEGER NOT NULL,
-            defense INTEGER NOT NULL,
-            realm_id TEXT,
-            realm_floor INTEGER NOT NULL DEFAULT 0,
+            user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
+            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
+            state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
+            hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
+            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, realm_data TEXT,
             FOREIGN KEY (sect_id) REFERENCES sects (id)
         )
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
-            item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES players (user_id),
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, item_id TEXT NOT NULL,
+            quantity INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES players (user_id),
             UNIQUE(user_id, item_id)
+        )
+    """)
+    # 新增表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS world_boss (
+            id INTEGER PRIMARY KEY, boss_template_id TEXT NOT NULL, current_hp INTEGER NOT NULL,
+            max_hp INTEGER NOT NULL, generated_at REAL NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS world_boss_participants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, total_damage INTEGER NOT NULL DEFAULT 0
         )
     """)
 
@@ -193,6 +192,103 @@ async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
     await conn.execute("DROP TABLE players_old_v4")
     logger.info("v4 -> v5 数据库迁移完成！")
 
+@migration(6)
+async def _upgrade_v5_to_v6(conn: aiosqlite.Connection):
+    """升级数据库 v5 -> v6: 添加 realm_data 字段"""
+    logger.info("开始执行 v5 -> v6 数据库迁移...")
+    cursor = await conn.execute("PRAGMA table_info(players)")
+    columns = [row['name'] for row in await cursor.fetchall()]
+    if 'realm_data' not in columns:
+        await conn.execute("ALTER TABLE players ADD COLUMN realm_data TEXT")
+        logger.info("已为 'players' 表添加 'realm_data' 字段。")
+    else:
+        logger.info("'realm_data' 字段已存在，跳过添加。")
+    logger.info("v5 -> v6 数据库迁移完成！")
+
+@migration(7)
+async def _upgrade_v6_to_v7(conn: aiosqlite.Connection):
+    """升级数据库 v6 -> v7: 新增 world_boss 相关表"""
+    logger.info("开始执行 v6 -> v7 数据库迁移...")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS world_boss (
+            id INTEGER PRIMARY KEY, boss_template_id TEXT NOT NULL, current_hp INTEGER NOT NULL,
+            max_hp INTEGER NOT NULL, generated_at REAL NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS world_boss_participants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, total_damage INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    logger.info("v6 -> v7 数据库迁移完成！")
+
+async def get_top_players(limit: int) -> List[Player]:
+    """获取等级最高的N个玩家"""
+    async with _db_connection.execute(
+        "SELECT * FROM players ORDER BY level_index DESC, experience DESC LIMIT ?", (limit,)
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [Player(**dict(row)) for row in rows]
+
+async def get_world_boss() -> Optional[WorldBossStatus]:
+    """获取当前的世界Boss状态"""
+    async with _db_connection.execute("SELECT * FROM world_boss WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+        return WorldBossStatus(**dict(row)) if row else None
+
+async def create_world_boss(boss: Boss) -> WorldBossStatus:
+    """在数据库中创建新的世界Boss记录"""
+    generated_at = time.time()
+    async with _db_connection.execute(
+        "INSERT INTO world_boss (id, boss_template_id, current_hp, max_hp, generated_at) VALUES (1, ?, ?, ?, ?)",
+        (boss.id, boss.hp, boss.max_hp, generated_at)
+    ) as cursor:
+        await _db_connection.commit()
+        return WorldBossStatus(id=1, boss_template_id=boss.id, current_hp=boss.hp, max_hp=boss.max_hp, generated_at=generated_at)
+
+async def transactional_attack_world_boss(player: Player, damage: int) -> Tuple[bool, int]:
+    """事务性地攻击Boss并更新玩家伤害"""
+    try:
+        async with _db_connection.transaction():
+            # 更新Boss血量
+            cursor = await _db_connection.execute(
+                "UPDATE world_boss SET current_hp = current_hp - ? WHERE id = 1 AND current_hp > 0",
+                (damage,)
+            )
+            if cursor.rowcount == 0:
+                return False, 0 # Boss已被击败或不存在
+
+            # 获取更新后的血量
+            async with _db_connection.execute("SELECT current_hp FROM world_boss WHERE id = 1") as c:
+                row = await c.fetchone()
+                new_hp = row[0] if row else 0
+
+            # 更新玩家伤害
+            await _db_connection.execute("""
+                INSERT INTO world_boss_participants (user_id, total_damage) VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET total_damage = total_damage + excluded.total_damage;
+            """, (player.user_id, damage))
+        
+        return True, new_hp
+    except aiosqlite.Error as e:
+        logger.error(f"攻击世界Boss事务失败: {e}")
+        return False, 0
+
+async def get_all_boss_participants() -> List[Dict[str, Any]]:
+    """获取所有参与者的伤害数据"""
+    async with _db_connection.execute("SELECT user_id, total_damage FROM world_boss_participants ORDER BY total_damage DESC") as cursor:
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+async def clear_world_boss_data():
+    """清理世界Boss及其参与者数据"""
+    try:
+        async with _db_connection.transaction():
+            await _db_connection.execute("DELETE FROM world_boss")
+            await _db_connection.execute("DELETE FROM world_boss_participants")
+        logger.info("世界Boss数据已清理。")
+    except aiosqlite.Error as e:
+        logger.error(f"清理世界Boss数据失败: {e}")
 
 async def get_player_by_id(user_id: str) -> Optional[Player]:
     async with _db_connection.execute("SELECT * FROM players WHERE user_id = ?", (user_id,)) as cursor:
@@ -215,7 +311,6 @@ async def update_player(player: Player):
 
     await _db_connection.execute(sql, player.__dict__)
     await _db_connection.commit()
-
 
 async def update_players_in_transaction(players: List[Player]):
     if not players:

@@ -15,7 +15,7 @@ class RealmHandler:
         reply_msg = "--- 秘境列表 ---\n"
         for realm_id, info in config.realm_data.items():
             cost = info['entry_cost']['gold']
-            reply_msg += (f"【{info['name']}】\n"
+            reply_msg += (f"【{info['name']}】(Lv.{info.get('level', 1)})\n"
                           f"  准入境界: {info['level_requirement']}\n"
                           f"  进入消耗: {cost} 灵石\n")
         reply_msg += f"\n使用「{config.CMD_ENTER_REALM} <秘境名>」进入探索。"
@@ -57,7 +57,8 @@ class RealmHandler:
 
             item_log = []
             for item_id, qty in gained_items.items():
-                item_name = config.item_data.get(str(item_id), {}).get("name", "未知物品")
+                item = config.item_data.get(str(item_id))
+                item_name = item.name if item else "未知物品"
                 item_log.append(f"【{item_name}】x{qty}")
             if item_log:
                 msg += "\n获得物品：" + ", ".join(item_log)
@@ -74,8 +75,11 @@ class RealmHandler:
 
         realm_name = config.realm_data.get(player.realm_id, {}).get("name", "未知的秘境")
 
+        # 清理秘境状态
         player.realm_id = None
         player.realm_floor = 0
+        player.set_realm_instance(None) 
+        
         await data_manager.update_player(player)
 
         yield event.plain_result(f"你已从【{realm_name}】中脱离，回到了大千世界。中途退出不会获得任何奖励。")

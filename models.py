@@ -1,7 +1,8 @@
 # models.py
 # 定义游戏中的数据模型
 
-from dataclasses import dataclass, field, replace
+import json
+from dataclasses import dataclass, field, replace, asdict
 from typing import Optional, List, Dict, Any
 
 @dataclass
@@ -14,6 +15,19 @@ class Item:
     description: str
     price: int
     effect: Optional[Dict[str, Any]] = None
+
+@dataclass
+class FloorEvent:
+    """秘境楼层事件数据模型"""
+    type: str  # "monster", "boss", "treasure", "empty"
+    data: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class RealmInstance:
+    """一次具体的、动态生成的秘境探索实例"""
+    id: str
+    total_floors: int
+    floors: List[FloorEvent]
 
 @dataclass
 class Player:
@@ -34,15 +48,34 @@ class Player:
     defense: int = 5
     realm_id: Optional[str] = None
     realm_floor: int = 0
+    realm_data: Optional[str] = None # 用于存储序列化的RealmInstance
 
     @property
     def level(self) -> str:
-        # 为了兼容旧代码和方便模板渲染，提供一个 level 属性的只读方法
-        # 注意: 这需要 config_manager 先被加载
         from .config_manager import config
         if 0 <= self.level_index < len(config.level_data):
             return config.level_data[self.level_index]['level_name']
         return "未知境界"
+        
+    def get_realm_instance(self) -> Optional[RealmInstance]:
+        """从realm_data反序列化RealmInstance对象"""
+        if not self.realm_data:
+            return None
+        try:
+            data = json.loads(self.realm_data)
+            floors = [FloorEvent(**f) for f in data.get("floors", [])]
+            data["floors"] = floors
+            return RealmInstance(**data)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def set_realm_instance(self, instance: Optional[RealmInstance]):
+        """序列化RealmInstance对象并存储到realm_data"""
+        if instance is None:
+            self.realm_data = None
+        else:
+            self.realm_data = json.dumps(asdict(instance))
+
 
     def clone(self) -> 'Player':
         return replace(self)
@@ -84,3 +117,12 @@ class AttackResult:
     message: str
     battle_over: bool = False
     updated_players: List[Player] = field(default_factory=list)
+
+@dataclass
+class WorldBossStatus:
+    """世界Boss状态的数据模型"""
+    id: int
+    boss_template_id: str
+    current_hp: int
+    max_hp: int
+    generated_at: float
