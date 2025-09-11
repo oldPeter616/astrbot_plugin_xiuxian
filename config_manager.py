@@ -37,7 +37,7 @@ class Config:
         self.boss_name_to_id: Dict[str, str] = {}
 
         # --- 可配置属性 (带默认值) ---
-        # 指令
+        # 确保所有指令都在此处声明，以防加载时出错
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
         self.CMD_CHECK_IN = "签到"
@@ -53,7 +53,7 @@ class Config:
         self.CMD_LEAVE_SECT = "退出宗门"
         self.CMD_USE_ITEM = "使用"
         self.CMD_SPAR = "切磋"
-        self.CMD_WORLD_BOSS = "讨伐世界boss"  # 新增此处的默认声明
+        self.CMD_WORLD_BOSS = "讨伐世界boss"
         self.CMD_ATTACK_BOSS = "攻击"
         self.CMD_FIGHT_STATUS = "战斗状态"
         self.CMD_REALM_LIST = "秘境列表"
@@ -61,8 +61,7 @@ class Config:
         self.CMD_REALM_ADVANCE = "前进"
         self.CMD_LEAVE_REALM = "离开秘境"
         self.CMD_HELP = "修仙帮助"
-        self.CMD_JOIN_FIGHT = "加入战斗" # 为兼容旧配置保留
-
+        
         # 数值
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50
@@ -101,19 +100,15 @@ class Config:
                 with open(self._paths["config"], 'r', encoding='utf-8') as f:
                     main_cfg = json.load(f)
 
-                # 遍历所有分类，安全地更新属性
                 for category_name, category_data in main_cfg.items():
                     if isinstance(category_data, dict):
                         for key, value in category_data.items():
                             if hasattr(self, key):
                                 setattr(self, key, value)
-                            else:
-                                logger.warning(f"主配置文件中的未知配置项 '{key}' 将被忽略。")
                 logger.info("成功加载主配置文件 config.json。")
             except Exception as e:
                 logger.error(f"加载主配置文件 config.json 失败: {e}")
 
-        # 加载其他数据文件
         self._load_json_data(self._paths["level"], "level_data", "境界")
         self._load_json_data(self._paths["item"], "item_data", "物品")
         self._load_json_data(self._paths["boss"], "boss_data", "Boss")

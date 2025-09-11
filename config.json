@@ -1,6 +1,9 @@
 {
     "COMMANDS": {
         "CMD_WORLD_BOSS": "讨伐世界boss",
+        "CMD_ATTACK_BOSS": "攻击",
+        "CMD_FIGHT_STATUS": "战斗状态",
+        "CMD_START_XIUXIAN": "我要修仙",
         "CMD_PLAYER_INFO": "我的信息",
         "CMD_CHECK_IN": "签到",
         "CMD_START_CULTIVATION": "闭关",
@@ -15,9 +18,6 @@
         "CMD_LEAVE_SECT": "退出宗门",
         "CMD_USE_ITEM": "使用",
         "CMD_SPAR": "切磋",
-        "CMD_JOIN_FIGHT": "加入战斗",
-        "CMD_ATTACK_BOSS": "攻击",
-        "CMD_FIGHT_STATUS": "战斗状态",
         "CMD_REALM_LIST": "秘境列表",
         "CMD_ENTER_REALM": "探索秘境",
         "CMD_REALM_ADVANCE": "前进",
