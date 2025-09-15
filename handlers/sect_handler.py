@@ -1,17 +1,15 @@
 # handlers/sect_handler.py
-
-from astrbot.api.event import AstrMessageEvent, filter
-from .decorator import player_required
-from .parser import parse_args
+from astrbot.api.event import AstrMessageEvent
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
-from astrbot.api import logger
 
-class SectHandlerMixin:
-    @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
-    @player_required
-    @parse_args(str)
+__all__ = ["SectHandler"]
+
+class SectHandler:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
     async def handle_create_sect(self, event: AstrMessageEvent, sect_name: str, player: Player):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_CREATE_SECT} <宗门名称>」。")
@@ -22,9 +20,6 @@ class SectHandlerMixin:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_JOIN_SECT, "加入一个宗门")
-    @player_required
-    @parse_args(str)
     async def handle_join_sect(self, event: AstrMessageEvent, sect_name: str, player: Player):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_JOIN_SECT} <宗门名称>」。")
@@ -35,16 +30,12 @@ class SectHandlerMixin:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_LEAVE_SECT, "退出当前宗门")
-    @player_required
     async def handle_leave_sect(self, event: AstrMessageEvent, player: Player):
         success, msg, updated_player = await xiuxian_logic.handle_leave_sect(player)
         if success and updated_player:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_MY_SECT, "查看我的宗门信息")
-    @player_required
     async def handle_my_sect(self, event: AstrMessageEvent, player: Player):
         if not player.sect_id:
             yield event.plain_result("道友乃逍遥散人，尚未加入任何宗门。")
@@ -61,7 +52,6 @@ class SectHandlerMixin:
         leader_player = await data_manager.get_player_by_id(sect_info['leader_id'])
         leader_info = "宗主: (信息丢失)"
         
-        # 增加交叉验证：确保获取到的玩家不仅存在，而且其sect_id与当前宗门id一致
         if leader_player and leader_player.user_id and leader_player.sect_id == sect_info['id']:
             leader_info = f"宗主: {leader_player.user_id[-4:]}"
 

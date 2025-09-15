@@ -1,9 +1,13 @@
-from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api import logger
+# handlers/misc_handler.py
+from astrbot.api.event import AstrMessageEvent
 from ..config_manager import config
 
-class MiscHandlerMixin:
-    @filter.command(config.CMD_HELP, "显示帮助信息")
+__all__ = ["MiscHandler"]
+
+class MiscHandler:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
     async def handle_help(self, event: AstrMessageEvent):
         help_text = (
             "--- 寻仙指令手册 ---\n"
@@ -26,9 +30,8 @@ class MiscHandlerMixin:
             f"【{config.CMD_LEAVE_SECT}】: 退出宗门。\n"
             "--- PVE/PVP ---\n"
             f"【{config.CMD_SPAR} @某人】: 与玩家切磋。\n"
-            f"【{config.CMD_START_BOSS_FIGHT} <名>】: 开启世界Boss。\n"
-            f"【{config.CMD_JOIN_FIGHT}】: 加入Boss战。\n"
-            f"【{config.CMD_ATTACK_BOSS}】: 攻击Boss。\n"
+            f"【{config.CMD_WORLD_BOSS}】: 讨伐或查看世界Boss。\n"
+            f"【{config.CMD_ATTACK_BOSS}】: 攻击世界Boss。\n"
             f"【{config.CMD_FIGHT_STATUS}】: 查看Boss战况。\n"
             f"【{config.CMD_REALM_LIST}】: 查看秘境。\n"
             f"【{config.CMD_ENTER_REALM} <名>】: 进入秘境。\n"

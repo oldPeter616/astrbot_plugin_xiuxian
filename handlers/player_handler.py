@@ -1,11 +1,16 @@
-from astrbot.api.event import AstrMessageEvent, filter
-from .decorator import player_required
+# handlers/player_handler.py
+from astrbot.api.event import AstrMessageEvent
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
 
-class PlayerHandlerMixin:
-    @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
+# 声明 __all__ 以便 main.py 精确导入
+__all__ = ["PlayerHandler"]
+
+class PlayerHandler:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
         user_id = event.get_sender_id()
         if await data_manager.get_player_by_id(user_id):
@@ -22,8 +27,6 @@ class PlayerHandlerMixin:
         )
         yield event.plain_result(reply_msg)
 
-    @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
-    @player_required
     async def handle_player_info(self, event: AstrMessageEvent, player: Player):
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
         reply_msg = (
@@ -42,32 +45,24 @@ class PlayerHandlerMixin:
         )
         yield event.plain_result(reply_msg)
 
-    @filter.command(config.CMD_CHECK_IN, "每日签到领取奖励")
-    @player_required
     async def handle_check_in(self, event: AstrMessageEvent, player: Player):
         success, msg, updated_player = xiuxian_logic.handle_check_in(player)
         if success:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_START_CULTIVATION, "开始闭关修炼")
-    @player_required
     async def handle_start_cultivation(self, event: AstrMessageEvent, player: Player):
         success, msg, updated_player = xiuxian_logic.handle_start_cultivation(player)
         if success:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_END_CULTIVATION, "结束闭关修炼")
-    @player_required
     async def handle_end_cultivation(self, event: AstrMessageEvent, player: Player):
         success, msg, updated_player = xiuxian_logic.handle_end_cultivation(player)
         if success:
             await data_manager.update_player(updated_player)
         yield event.plain_result(msg)
 
-    @filter.command(config.CMD_BREAKTHROUGH, "尝试突破当前境界")
-    @player_required
     async def handle_breakthrough(self, event: AstrMessageEvent, player: Player):
         if player.state != "空闲":
             yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")

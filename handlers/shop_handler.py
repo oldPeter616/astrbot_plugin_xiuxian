@@ -1,26 +1,28 @@
-from astrbot.api.event import AstrMessageEvent, filter
-from .decorator import player_required
-from .parser import parse_args
+# handlers/shop_handler.py
+from astrbot.api.event import AstrMessageEvent
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
-from astrbot.api import logger
 
-class ShopHandlerMixin:
-    @filter.command(config.CMD_SHOP, "查看坊市商品")
+__all__ = ["ShopHandler"]
+
+class ShopHandler:
+    def __init__(self, plugin):
+        self.plugin = plugin
+
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"
-        if not config.item_data:
+        sorted_items = sorted(config.item_data.values(), key=lambda item: item.price)
+        
+        if not sorted_items:
             reply_msg += "今日坊市暂无商品。\n"
         else:
-            for item_id, info in config.item_data.items():
-                reply_msg += f"【{info['name']}】售价：{info['price']} 灵石\n"
+            for info in sorted_items:
+                reply_msg += f"【{info.name}】售价：{info.price} 灵石\n"
         reply_msg += "------------------\n"
         reply_msg += f"使用「{config.CMD_BUY} <物品名> [数量]」进行购买。"
         yield event.plain_result(reply_msg)
 
-    @filter.command(config.CMD_BACKPACK, "查看你的背包")
-    @player_required
     async def handle_backpack(self, event: AstrMessageEvent, player: Player):
         inventory = await data_manager.get_inventory_by_user_id(player.user_id)
         if not inventory:
@@ -33,16 +35,12 @@ class ShopHandlerMixin:
         reply_msg += "--------------------------"
         yield event.plain_result(reply_msg)
 
-    @filter.command(config.CMD_BUY, "购买物品")
-    @player_required
-    @parse_args(str, int, optional=1)
     async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):        
-        # 如果数量未提供，默认为1
         if quantity is None:
             quantity = 1
             
-        if quantity <= 0:
-            yield event.plain_result("购买数量必须是正整数。")
+        if not item_name or quantity <= 0:
+            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_BUY} <物品名> [数量]`。")
             return
 
         item_to_buy = config.get_item_by_name(item_name)
@@ -51,7 +49,7 @@ class ShopHandlerMixin:
             return
 
         item_id_to_add, target_item_info = item_to_buy
-        total_cost = target_item_info['price'] * quantity
+        total_cost = target_item_info.price * quantity
 
         success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
@@ -64,16 +62,12 @@ class ShopHandlerMixin:
             else:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
-    @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
-    @player_required
-    @parse_args(str, int, optional=1)
     async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):
-        # 如果数量未提供，默认为1
         if quantity is None:
             quantity = 1
 
-        if quantity <= 0:
-            yield event.plain_result("使用数量必须是正整数。")
+        if not item_name or quantity <= 0:
+            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_USE_ITEM} <物品名> [数量]`。")
             return
             
         item_to_use = config.get_item_by_name(item_name)

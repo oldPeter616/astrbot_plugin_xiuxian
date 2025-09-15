@@ -1,11 +1,17 @@
-from .player_handler import PlayerHandlerMixin
-from .shop_handler import ShopHandlerMixin
-from .sect_handler import SectHandlerMixin
-from .combat_handler import CombatHandlerMixin
-from .realm_handler import RealmHandlerMixin
-from .misc_handler import MiscHandlerMixin
+# handlers/__init__.py
+
+from .player_handler import PlayerHandler
+from .shop_handler import ShopHandler
+from .sect_handler import SectHandler
+from .combat_handler import CombatHandler
+from .realm_handler import RealmHandler
+from .misc_handler import MiscHandler
 
 __all__ = [
-    "PlayerHandlerMixin", "ShopHandlerMixin", "SectHandlerMixin", 
-    "CombatHandlerMixin", "RealmHandlerMixin", "MiscHandlerMixin"
+    "PlayerHandler",
+    "ShopHandler",
+    "SectHandler",
+    "CombatHandler",
+    "RealmHandler",
+    "MiscHandler"
 ]
