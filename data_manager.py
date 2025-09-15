@@ -50,6 +50,7 @@ async def migrate_database():
     async with _db_connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
         if await cursor.fetchone() is None:
             logger.info("未检测到数据库版本，将进行全新安装...")
+            await _db_connection.execute("BEGIN")
             await _create_all_tables_v7(_db_connection)
             await _db_connection.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
             await _db_connection.commit()
@@ -64,15 +65,30 @@ async def migrate_database():
         for version in sorted(MIGRATION_TASKS.keys()):
             if current_version < version:
                 logger.info(f"正在执行数据库升级: v{current_version} -> v{version} ...")
+                
+                # 特殊处理：v5迁移需要关闭外键约束
+                is_v5_migration = (version == 5)
+                
                 try:
-                    async with _db_connection.transaction():
-                        await MIGRATION_TASKS[version](_db_connection)
-                        await _db_connection.execute("UPDATE db_info SET version = ?", (version,))
+                    if is_v5_migration:
+                        await _db_connection.execute("PRAGMA foreign_keys = OFF")
+                    
+                    await _db_connection.execute("BEGIN")
+                    await MIGRATION_TASKS[version](_db_connection)
+                    await _db_connection.execute("UPDATE db_info SET version = ?", (version,))
+                    await _db_connection.commit()
+                    
                     logger.info(f"v{current_version} -> v{version} 升级成功！")
                     current_version = version
                 except Exception as e:
+                    await _db_connection.rollback()
                     logger.error(f"数据库 v{current_version} -> v{version} 升级失败，已回滚: {e}", exc_info=True)
                     raise
+                finally:
+                    # 确保在v5迁移后，无论成功失败，都重新开启外键约束
+                    if is_v5_migration:
+                        await _db_connection.execute("PRAGMA foreign_keys = ON")
+
         logger.info("数据库升级完成！")
     else:
         logger.info("数据库结构已是最新。")
@@ -93,13 +109,13 @@ async def _create_all_tables_v7(conn: aiosqlite.Connection):
             state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
             hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
             realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, realm_data TEXT,
-            FOREIGN KEY (sect_id) REFERENCES sects (id)
+            FOREIGN KEY (sect_id) REFERENCES sects (id) ON DELETE SET NULL
         )
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, item_id TEXT NOT NULL,
-            quantity INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES players (user_id),
+            quantity INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE,
             UNIQUE(user_id, item_id)
         )
     """)
@@ -111,23 +127,29 @@ async def _create_all_tables_v7(conn: aiosqlite.Connection):
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS world_boss_participants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, total_damage INTEGER NOT NULL DEFAULT 0
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE,
+            total_damage INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE
         )
     """)
 
 @migration(2)
 async def _upgrade_v1_to_v2(conn: aiosqlite.Connection):
+    # This migration also benefits from FK handling, let's make it robust
+    await conn.execute("PRAGMA foreign_keys = OFF")
     await conn.execute("ALTER TABLE inventory RENAME TO inventory_old")
     await conn.execute("""
         CREATE TABLE inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
             item_id TEXT NOT NULL, quantity INTEGER NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES players (user_id),
+            FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE,
             UNIQUE(user_id, item_id)
         )
     """)
     await conn.execute("INSERT INTO inventory (user_id, item_id, quantity) SELECT user_id, item_id, quantity FROM inventory_old")
     await conn.execute("DROP TABLE inventory_old")
+    await conn.execute("PRAGMA foreign_keys = ON")
+
 
 @migration(3)
 async def _upgrade_v2_to_v3(conn: aiosqlite.Connection):
@@ -148,6 +170,7 @@ async def _upgrade_v3_to_v4(conn: aiosqlite.Connection):
 @migration(5)
 async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
     logger.info("开始执行 v4 -> v5 数据库迁移...")
+    # PRAGMA statements are now handled by the calling function
     await conn.execute("ALTER TABLE players RENAME TO players_old_v4")
     await conn.execute("""
         CREATE TABLE players (
@@ -157,7 +180,7 @@ async def _upgrade_v4_to_v5(conn: aiosqlite.Connection):
             sect_name TEXT, hp INTEGER NOT NULL, max_hp INTEGER NOT NULL,
             attack INTEGER NOT NULL, defense INTEGER NOT NULL,
             realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (sect_id) REFERENCES sects (id)
+            FOREIGN KEY (sect_id) REFERENCES sects (id) ON DELETE SET NULL
         )
     """)
     level_name_to_index_map = {info['level_name']: i for i, info in enumerate(config.level_data)}
@@ -194,7 +217,8 @@ async def _upgrade_v6_to_v7(conn: aiosqlite.Connection):
     """)
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS world_boss_participants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, total_damage INTEGER NOT NULL DEFAULT 0
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, total_damage INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE
         )
     """)
     logger.info("v6 -> v7 数据库迁移完成！")
@@ -214,16 +238,16 @@ async def get_world_boss() -> Optional['WorldBossStatus']:
 
 async def create_world_boss(boss: 'Boss') -> 'WorldBossStatus':
     generated_at = time.time()
-    async with _db_connection.execute(
+    await _db_connection.execute(
         "INSERT INTO world_boss (id, boss_template_id, current_hp, max_hp, generated_at) VALUES (1, ?, ?, ?, ?)",
         (boss.id, boss.hp, boss.max_hp, generated_at)
-    ) as cursor:
-        await _db_connection.commit()
-        return WorldBossStatus(id=1, boss_template_id=boss.id, current_hp=boss.hp, max_hp=boss.max_hp, generated_at=generated_at)
+    )
+    await _db_connection.commit()
+    return WorldBossStatus(id=1, boss_template_id=boss.id, current_hp=boss.hp, max_hp=boss.max_hp, generated_at=generated_at)
 
 async def transactional_attack_world_boss(player: 'Player', damage: int) -> Tuple[bool, int]:
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             cursor = await _db_connection.execute(
                 "UPDATE world_boss SET current_hp = current_hp - ? WHERE id = 1 AND current_hp > 0",
                 (damage,)
@@ -249,7 +273,7 @@ async def get_all_boss_participants() -> List[Dict[str, Any]]:
 
 async def clear_world_boss_data():
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             await _db_connection.execute("DELETE FROM world_boss")
             await _db_connection.execute("DELETE FROM world_boss_participants")
         logger.info("世界Boss数据已清理。")
@@ -283,7 +307,7 @@ async def update_players_in_transaction(players: List['Player']):
     set_clause = ", ".join([f"{f} = :{f}" for f in player_fields])
     sql = f"UPDATE players SET {set_clause} WHERE user_id = :user_id"
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             for player in players:
                 await _db_connection.execute(sql, player.__dict__)
     except aiosqlite.Error as e:
@@ -346,7 +370,7 @@ async def get_item_from_inventory(user_id: str, item_id: str) -> Optional[Dict[s
 
 async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, int]):
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             for item_id, quantity in items.items():
                 await _db_connection.execute("""
                     INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
@@ -358,7 +382,7 @@ async def add_items_to_inventory_in_transaction(user_id: str, items: Dict[str, i
 
 async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int = 1) -> bool:
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             cursor = await _db_connection.execute("""
                 UPDATE inventory SET quantity = quantity - ? 
                 WHERE user_id = ? AND item_id = ? AND quantity >= ?
@@ -375,7 +399,7 @@ async def remove_item_from_inventory(user_id: str, item_id: str, quantity: int =
         
 async def transactional_buy_item(user_id: str, item_id: str, quantity: int, total_cost: int) -> Tuple[bool, str]:
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             cursor = await _db_connection.execute(
                 "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
                 (total_cost, user_id, total_cost)
@@ -393,7 +417,7 @@ async def transactional_buy_item(user_id: str, item_id: str, quantity: int, tota
 
 async def transactional_apply_item_effect(user_id: str, item_id: str, quantity: int, effect: 'PlayerEffect') -> bool:
     try:
-        async with _db_connection.transaction():
+        async with _db_connection:
             cursor = await _db_connection.execute(
                 "UPDATE inventory SET quantity = quantity - ? WHERE user_id = ? AND item_id = ? AND quantity >= ?",
                 (quantity, user_id, item_id, quantity)
