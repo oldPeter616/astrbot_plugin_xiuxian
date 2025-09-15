@@ -4,12 +4,9 @@ from .parser import parse_args
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
+from astrbot.api import logger
 
-class ShopHandler:
-    def __init__(self):
-        # 此Handler没有需要注入的管理器依赖
-        pass
-
+class ShopHandlerMixin:
     @filter.command(config.CMD_SHOP, "查看坊市商品")
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"

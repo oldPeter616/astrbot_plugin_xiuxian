@@ -5,11 +5,9 @@ from .. import data_manager
 from ..config_manager import config
 from ..models import Player
 from ..realm_manager import RealmManager
+from astrbot.api import logger
 
-class RealmHandler:
-    def __init__(self, realm_manager: RealmManager):
-        self.realm_manager = realm_manager
-
+class RealmHandlerMixin:
     @filter.command(config.CMD_REALM_LIST, "查看所有可探索的秘境")
     async def handle_realm_list(self, event: AstrMessageEvent):
         reply_msg = "--- 秘境列表 ---\n"

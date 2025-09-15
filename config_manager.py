@@ -78,22 +78,20 @@ class Config:
         # 文件
         self.DATABASE_FILE = "xiuxian_data.db"
 
-    def _load_json_data(self, file_path: Path, attribute_name: str, log_name: str) -> bool:
+    def _load_json_data(self, file_path: Path) -> Any:
         if not file_path.exists():
-            logger.warning(f"{log_name}数据文件 {file_path} 不存在，将使用默认值。")
-            setattr(self, attribute_name, {} if 'data' in attribute_name else [])
-            return False
+            logger.warning(f"配置文件 {file_path} 不存在，将使用默认值。")
+            return {} if file_path.suffix == '.json' else []
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                setattr(self, attribute_name, data)
-                logger.info(f"成功加载 {len(data)} 条 {log_name} 数据。")
-                return True
+                logger.info(f"成功加载 {file_path.name} (共 {len(data)} 条数据)。")
+                return data
         except Exception as e:
-            logger.error(f"加载 {log_name} 数据文件 {file_path} 失败: {e}")
-        return False
+            logger.error(f"加载配置文件 {file_path} 失败: {e}")
+            return {} if file_path.suffix == '.json' else []
 
-    def load(self):
+    def _load_all(self):
         """加载所有配置文件并进行后处理"""
         if self._paths["config"].exists():
             try:
@@ -109,22 +107,19 @@ class Config:
             except Exception as e:
                 logger.error(f"加载主配置文件 config.json 失败: {e}")
 
-        self._load_json_data(self._paths["level"], "level_data", "境界")
-        self._load_json_data(self._paths["item"], "item_data", "物品")
-        self._load_json_data(self._paths["boss"], "boss_data", "Boss")
-        self._load_json_data(self._paths["monster"], "monster_data", "怪物")
-        self._load_json_data(self._paths["realm"], "realm_data", "秘境")
-        self._load_json_data(self._paths["tag"], "tag_data", "标签")
+        self.level_data = self._load_json_data(self._paths["level"])
+        raw_item_data = self._load_json_data(self._paths["item"])
+        self.boss_data = self._load_json_data(self._paths["boss"])
+        self.monster_data = self._load_json_data(self._paths["monster"])
+        self.realm_data = self._load_json_data(self._paths["realm"])
+        self.tag_data = self._load_json_data(self._paths["tag"])
 
-        self._post_process_data()
-
-    def _post_process_data(self):
-        """预处理所有数据，建立名称到ID的映射以优化性能"""
+        # --- 预处理数据 ---
         self.level_map = {info["level_name"]: {"index": i, **info}
                           for i, info in enumerate(self.level_data) if "level_name" in info}
 
-        raw_item_data = self.item_data
         self.item_data = {}
+        self.item_name_to_id = {}
         for item_id, info in raw_item_data.items():
             try:
                 self.item_data[item_id] = Item(id=item_id, **info)

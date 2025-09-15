@@ -4,11 +4,9 @@ from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
 from ..combat_manager import BattleManager
+from astrbot.api import logger
 
-class CombatHandler:
-    def __init__(self, battle_manager: BattleManager):
-        self.battle_manager = battle_manager
-
+class CombatHandlerMixin:
     @filter.command(config.CMD_SPAR, "与其他玩家切磋")
     @player_required
     async def handle_spar(self, event: AstrMessageEvent, player: Player):

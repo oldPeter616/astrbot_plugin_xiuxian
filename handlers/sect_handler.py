@@ -6,12 +6,9 @@ from .parser import parse_args
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
+from astrbot.api import logger
 
-class SectHandler:
-    def __init__(self):
-        # 此Handler没有需要注入的管理器依赖
-        pass
-
+class SectHandlerMixin:
     @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
     @player_required
     @parse_args(str)

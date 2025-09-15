@@ -4,11 +4,7 @@ from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
 
-class PlayerHandler:
-    def __init__(self):
-        # 此Handler没有需要注入的管理器依赖
-        pass
-
+class PlayerHandlerMixin:
     @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
         user_id = event.get_sender_id()
