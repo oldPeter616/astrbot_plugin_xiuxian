@@ -1,8 +1,7 @@
 {
     "COMMANDS": {
-        "CMD_WORLD_BOSS": "讨伐世界boss",
-        "CMD_ATTACK_BOSS": "攻击",
-        "CMD_FIGHT_STATUS": "战斗状态",
+        "CMD_BOSS_LIST": "查看世界boss",
+        "CMD_FIGHT_BOSS": "讨伐boss",
         "CMD_START_XIUXIAN": "我要修仙",
         "CMD_PLAYER_INFO": "我的信息",
         "CMD_CHECK_IN": "签到",
@@ -31,7 +30,6 @@
         "BASE_EXP_PER_MINUTE": 10,
         "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": 0.1,
         "CREATE_SECT_COST": 5000,
-        "WORLD_BOSS_TEMPLATE_ID": "1",
         "WORLD_BOSS_TOP_PLAYERS_AVG": 5
     },
     "FILES": {

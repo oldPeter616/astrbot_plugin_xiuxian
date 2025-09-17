@@ -170,25 +170,18 @@ class XiuXianPlugin(Star):
             return
         async for r in self.combat_handler.handle_spar(event, player): yield r
         
-    @filter.command(config.CMD_WORLD_BOSS, "挑战或查看当前的世界Boss")
-    async def handle_world_boss(self, event: AstrMessageEvent):
+    @filter.command(config.CMD_BOSS_LIST, "查看当前所有世界Boss")
+    async def handle_boss_list(self, event: AstrMessageEvent):
+        async for r in self.combat_handler.handle_boss_list(event): yield r
+
+    @filter.command(config.CMD_FIGHT_BOSS, "讨伐指定ID的世界Boss")
+    async def handle_fight_boss(self, event: AstrMessageEvent, boss_id: str):
         player = await data_manager.get_player_by_id(event.get_sender_id())
         if not player:
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
-        async for r in self.combat_handler.handle_world_boss(event, player): yield r
-
-    @filter.command(config.CMD_ATTACK_BOSS, "攻击当前的世界Boss")
-    async def handle_attack_boss(self, event: AstrMessageEvent):
-        player = await data_manager.get_player_by_id(event.get_sender_id())
-        if not player:
-            yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
-            return
-        async for r in self.combat_handler.handle_attack_boss(event, player): yield r
-
-    @filter.command(config.CMD_FIGHT_STATUS, "查看当前战斗状态")
-    async def handle_fight_status(self, event: AstrMessageEvent):
-        async for r in self.combat_handler.handle_fight_status(event): yield r
+        player_name = event.get_sender_name()
+        async for r in self.combat_handler.handle_fight_boss(event, player, boss_id, player_name): yield r
         
     # Realm Commands
     @filter.command(config.CMD_REALM_LIST, "查看所有可探索的秘境")

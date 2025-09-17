@@ -2,11 +2,11 @@
     "1": {
         "name": "黑风山熊王",
         "tags": ["野兽", "领主"],
-        "cooldown_minutes": 60
+        "cooldown_minutes": 1440
     },
-    "boss_wolf_king": {
+    "2": {
         "name": "苍月狼王",
         "tags": ["野兽", "迅捷", "精英"],
-        "cooldown_minutes": 30
+        "cooldown_minutes": 720
     }
 }

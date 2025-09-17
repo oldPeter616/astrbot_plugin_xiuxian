@@ -3,131 +3,161 @@
 
 import asyncio
 import random
+import time
 from typing import Dict, List, Optional, Tuple
 
 from astrbot.api import logger
-from .models import Player, Boss, AttackResult
+from .models import Player, Boss, ActiveWorldBoss
 from . import data_manager
 from .config_manager import config
 from .generators import MonsterGenerator
 
 class BattleManager:
-    """管理全局的、持久化的世界Boss"""
-    def __init__(self):
-        self._boss_attack_lock = asyncio.Lock() # 用于确保攻击的原子性
+    """管理全局的世界Boss刷新与战斗"""
 
-    async def ensure_boss_exists_and_get_status(self) -> Tuple[Optional[Boss], str]:
+    async def ensure_bosses_are_spawned(self) -> List[Tuple[ActiveWorldBoss, Boss]]:
         """
-        确保世界Boss存在于数据库中，如果不存在则创建。
-        返回 (Boss对象, 状态消息)
+        检查所有Boss模板，如果冷却完毕且当前未激活，则生成新的Boss实例。
+        返回当前所有活跃的 (Boss实例, Boss模板) 列表。
         """
-        boss_status = await data_manager.get_world_boss()
+        active_boss_instances = await data_manager.get_active_bosses()
+        active_boss_map = {b.boss_id: b for b in active_boss_instances}
+        
+        all_boss_templates = config.boss_data
 
-        if not boss_status:
-            logger.info("当前无世界Boss，开始生成新的Boss...")
-            # 1. 获取顶尖玩家
-            top_players = await data_manager.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
-            if not top_players:
-                # 如果服务器没有玩家，则按等级1生成
-                avg_level_index = 1
-            else:
-                avg_level_index = int(sum(p.level_index for p in top_players) / len(top_players))
+        for boss_id, template in all_boss_templates.items():
+            if boss_id not in active_boss_map:
+                # 这个Boss当前不活跃，检查是否需要刷新
+                # 在一个更复杂的系统中，这里会检查冷却时间戳
+                # 为简化，我们总是刷新不存在的Boss
+                logger.info(f"世界Boss {template['name']} (ID: {boss_id}) 当前未激活，开始生成...")
+                
+                top_players = await data_manager.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
+                avg_level_index = int(sum(p.level_index for p in top_players) / len(top_players)) if top_players else 1
 
-            # 2. 生成Boss实例
-            boss_template_id = config.WORLD_BOSS_TEMPLATE_ID
-            boss = MonsterGenerator.create_boss(boss_template_id, avg_level_index)
-            if not boss:
-                return None, "错误：世界Boss模板配置不正确，生成失败！"
+                # 使用 MonsterGenerator 创建一个临时的、带属性的Boss对象，用于获取血量等信息
+                boss_with_stats = MonsterGenerator.create_boss(boss_id, avg_level_index)
+                if not boss_with_stats:
+                    logger.error(f"无法为Boss ID {boss_id} 生成属性，请检查配置。")
+                    continue
 
-            # 3. 存入数据库并清理旧数据
-            await data_manager.clear_world_boss_data()
-            boss_status = await data_manager.create_world_boss(boss)
-            logger.info(f"已生成新的世界Boss: {boss.name} (HP: {boss.max_hp})")
+                new_boss_instance = ActiveWorldBoss(
+                    boss_id=boss_id,
+                    current_hp=boss_with_stats.max_hp,
+                    max_hp=boss_with_stats.max_hp,
+                    spawned_at=time.time(),
+                    level_index=avg_level_index
+                )
+                await data_manager.create_active_boss(new_boss_instance)
+                active_boss_map[boss_id] = new_boss_instance
+        
+        # 准备返回值
+        result = []
+        for boss_id, active_instance in active_boss_map.items():
+            # 为每个活跃的Boss，都生成一个带属性的临时对象用于战斗和展示
+            boss_template = MonsterGenerator.create_boss(boss_id, active_instance.level_index)
+            if boss_template:
+                result.append((active_instance, boss_template))
+        return result
+
+    async def player_fight_boss(self, player: Player, boss_id: str, player_name: str) -> str:
+        """处理玩家对世界Boss的自动战斗流程"""
+        active_boss_instance = next((b for b in await data_manager.get_active_bosses() if b.boss_id == boss_id), None)
+        
+        if not active_boss_instance or active_boss_instance.current_hp <= 0:
+            return f"来晚了一步，ID为【{boss_id}】的Boss已被击败或已消失！"
             
-            msg = f"沉睡的远古妖兽【{boss.name}】苏醒了！它的力量深不可测！\n"
-            msg += f"❤️生命: {boss_status.current_hp}/{boss_status.max_hp}"
-            return boss, msg
-        else:
-            # Boss已存在，直接获取信息
-            boss_template = config.boss_data.get(boss_status.boss_template_id)
-            boss_name = boss_template.get("name", "远古妖兽") if boss_template else "远古妖兽"
-            
-            msg = f"--- 当前世界Boss：【{boss_name}】 ---\n"
-            msg += f"❤️剩余生命: {boss_status.current_hp}/{boss_status.max_hp}\n\n"
-            msg += "--- 伤害贡献榜 ---\n"
-            
-            participants = await data_manager.get_all_boss_participants()
-            if not participants:
-                msg += "暂无道友对其造成伤害。"
-            else:
-                for p_data in participants[:5]: # 只显示前5名
-                    msg += f" - 玩家 {p_data['user_id'][-4:]}: {p_data['total_damage']} 点伤害\n"
-            
-            return MonsterGenerator.create_boss(boss_status.boss_template_id, 1), msg # 返回一个临时的boss实例用于获取名字等信息
+        # 生成带属性的Boss对象用于战斗
+        boss = MonsterGenerator.create_boss(boss_id, active_boss_instance.level_index)
+        if not boss:
+            return "错误：无法加载Boss战斗数据！"
 
-    async def player_attack(self, player: Player) -> str:
-        """处理玩家对世界Boss的攻击"""
-        async with self._boss_attack_lock:
-            boss_status = await data_manager.get_world_boss()
-            if not boss_status or boss_status.current_hp <= 0:
-                return "来晚了一步，世界Boss已被击败！"
+        # --- 自动战斗循环 ---
+        p_clone = player.clone()
+        boss_hp = active_boss_instance.current_hp
+        combat_log = [f"⚔️ 你向【{boss.name}】发起了悍不畏死的冲锋！"]
+        total_damage_dealt = 0
+        turn = 1
+        max_turns = 50 # 设定最大回合数防止无限循环
+
+        while p_clone.hp > 0 and boss_hp > 0 and turn <= max_turns:
+            combat_log.append(f"\n--- 第 {turn} 回合 ---")
             
-            # 获取Boss的防御力
-            boss_template = config.boss_data.get(boss_status.boss_template_id)
-            if not boss_template: return "Boss数据异常！" # 安全检查
+            # 玩家攻击
+            damage_to_boss = max(1, p_clone.attack - boss.defense)
+            boss_hp -= damage_to_boss
+            total_damage_dealt += damage_to_boss
+            combat_log.append(f"你对【{boss.name}】造成了 {damage_to_boss} 点伤害。")
             
-            # 为了获取防御力，需要模拟生成一个boss对象
-            top_players = await data_manager.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
-            avg_level_index = int(sum(p.level_index for p in top_players) / len(top_players)) if top_players else 1
-            boss_instance = MonsterGenerator.create_boss(boss_status.boss_template_id, avg_level_index)
+            if boss_hp <= 0:
+                combat_log.append(f"❤️【{boss.name}】剩余生命: 0/{active_boss_instance.max_hp}")
+                break
+            combat_log.append(f"❤️【{boss.name}】剩余生命: {boss_hp}/{active_boss_instance.max_hp}")
 
+            # Boss攻击
+            damage_to_player = max(1, boss.attack - p_clone.defense)
+            p_clone.hp -= damage_to_player
+            combat_log.append(f"【{boss.name}】对你造成了 {damage_to_player} 点伤害。")
+            combat_log.append(f"❤️你剩余生命: {p_clone.hp}/{p_clone.max_hp}")
 
-            damage = max(1, player.attack - boss_instance.defense)
-            
-            success, new_hp = await data_manager.transactional_attack_world_boss(player, damage)
-            
-            if not success:
-                return "攻击失败，Boss可能已被其他道友击败！"
+            turn += 1
 
-            msg = f"你对Boss造成了 {damage} 点伤害！Boss剩余血量: {new_hp}/{boss_status.max_hp}"
+        # --- 战斗结算 ---
+        final_report = ["\n".join(combat_log)]
 
-            if new_hp <= 0:
-                msg += "\n\n**惊天动地！在众位道友的合力之下，世界Boss倒下了！**\n--- 战利品结算 ---"
-                await self._end_battle(boss_instance)
+        # 更新Boss血量并记录伤害
+        await data_manager.update_active_boss_hp(boss_id, boss_hp)
+        if total_damage_dealt > 0:
+            await data_manager.record_boss_damage(boss_id, player.user_id, player_name, total_damage_dealt)
+            final_report.append(f"\n你本次共对Boss造成 {total_damage_dealt} 点伤害！")
 
-            return msg
+        if p_clone.hp <= 0:
+            final_report.append("你不敌妖兽，力竭倒下...但你的贡献已被记录！")
+        
+        if boss_hp <= 0:
+            final_report.append(f"\n**惊天动地！【{boss.name}】在众位道友的合力之下倒下了！**")
+            final_report.append(await self._end_battle(boss, active_boss_instance))
 
-    async def _end_battle(self, boss: Boss):
+        return "\n".join(final_report)
+
+    async def _end_battle(self, boss_template: Boss, boss_instance: ActiveWorldBoss) -> str:
         """结算奖励并清理Boss"""
-        participants = await data_manager.get_all_boss_participants()
+        participants = await data_manager.get_boss_participants(boss_instance.boss_id)
         if not participants:
-            await data_manager.clear_world_boss_data()
-            return
+            await data_manager.clear_boss_data(boss_instance.boss_id)
+            return "但似乎无人对此Boss造成伤害，奖励无人获得。"
 
         total_damage_dealt = sum(p['total_damage'] for p in participants) or 1
         
+        # 准备奖励结算报告
+        reward_report = ["\n--- 战利品结算 ---"]
         updated_players = []
-        for p_data in participants:
-            player = await data_manager.get_player_by_id(p_data['user_id'])
-            if not player: continue
 
+        for p_data in participants:
+            # 注意：这里我们只根据记录的user_id和user_name发奖，而不直接获取Player对象
+            # 这是一个简化的异步模型，避免在循环中多次查询数据库
             damage_contribution = p_data['total_damage'] / total_damage_dealt
             
-            gold_reward = int(boss.rewards['gold'] * damage_contribution)
-            exp_reward = int(boss.rewards['experience'] * damage_contribution)
-
-            player.gold += gold_reward
-            player.experience += exp_reward
-            updated_players.append(player)
+            gold_reward = int(boss_template.rewards['gold'] * damage_contribution)
+            exp_reward = int(boss_template.rewards['experience'] * damage_contribution)
             
-            logger.info(f"玩家 {player.user_id} 获得Boss奖励: {gold_reward} 灵石, {exp_reward} 修为")
+            # 找到对应的玩家并更新
+            player = await data_manager.get_player_by_id(p_data['user_id'])
+            if player:
+                player.gold += gold_reward
+                player.experience += exp_reward
+                updated_players.append(player)
+                reward_report.append(f"道友 {p_data['user_name']} 获得灵石 {gold_reward}，修为 {exp_reward}！")
         
         # 批量更新玩家数据
-        await data_manager.update_players_in_transaction(updated_players)
+        if updated_players:
+            await data_manager.update_players_in_transaction(updated_players)
         
-        # 清理Boss数据，等待下一次生成
-        await data_manager.clear_world_boss_data()
-        logger.info("世界Boss已被击败，数据已清理。")
+        # 清理Boss数据
+        await data_manager.clear_boss_data(boss_instance.boss_id)
+        logger.info(f"世界Boss {boss_instance.boss_id} 已被击败，数据已清理。")
+        
+        return "\n".join(reward_report)
 
 def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
     p1 = attacker.clone()

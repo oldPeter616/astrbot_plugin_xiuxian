@@ -52,9 +52,8 @@ class Config:
         self.CMD_LEAVE_SECT = "退出宗门"
         self.CMD_USE_ITEM = "使用"
         self.CMD_SPAR = "切磋"
-        self.CMD_WORLD_BOSS = "讨伐世界boss"
-        self.CMD_ATTACK_BOSS = "攻击"
-        self.CMD_FIGHT_STATUS = "战斗状态"
+        self.CMD_BOSS_LIST = "查看世界boss"
+        self.CMD_FIGHT_BOSS = "讨伐boss"
         self.CMD_REALM_LIST = "秘境列表"
         self.CMD_ENTER_REALM = "探索秘境"
         self.CMD_REALM_ADVANCE = "前进"
@@ -68,7 +67,7 @@ class Config:
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
         self.WORLD_BOSS_TEMPLATE_ID = "1"
-        self.WORLD_BOSS_TOP_PLAYERS_AVG = 5
+        self.WORLD_BOSS_TOP_PLAYERS_AVG = 3
 
         self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
 

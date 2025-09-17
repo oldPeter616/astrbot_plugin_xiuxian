@@ -32,18 +32,36 @@ class CombatHandler:
         report = await xiuxian_logic.handle_pvp(attacker, defender)
         yield event.plain_result(report)
 
-    async def handle_world_boss(self, event: AstrMessageEvent, player: Player):
-        boss, status_msg = await self.plugin.battle_manager.ensure_boss_exists_and_get_status()
-        if not boss:
-            yield event.plain_result(status_msg)
+    async def handle_boss_list(self, event: AstrMessageEvent):
+        """处理查看世界Boss列表的指令"""
+        active_bosses_with_templates = await self.plugin.battle_manager.ensure_bosses_are_spawned()
+        
+        if not active_bosses_with_templates:
+            yield event.plain_result("天地间一片祥和，暂无妖兽作乱。")
             return
-        yield event.plain_result(status_msg)
-        yield event.plain_result(f"发送「{config.CMD_ATTACK_BOSS}」对它造成伤害！")
+            
+        report = ["--- 当前可讨伐的世界Boss ---"]
+        for instance, template in active_bosses_with_templates:
+            report.append(
+                f"【{template.name}】 (ID: {instance.boss_id})\n"
+                f"  ❤️剩余生命: {instance.current_hp}/{instance.max_hp}"
+            )
+            # 显示伤害贡献榜前三名
+            participants = await data_manager.get_boss_participants(instance.boss_id)
+            if participants:
+                report.append("  - 伤害贡献榜 -")
+                for p_data in participants[:3]:
+                    report.append(f"    - {p_data['user_name']}: {p_data['total_damage']} 伤害")
 
-    async def handle_attack_boss(self, event: AstrMessageEvent, player: Player):
-        result_msg = await self.plugin.battle_manager.player_attack(player)
+        report.append(f"\n使用「{config.CMD_FIGHT_BOSS} <Boss ID>」发起挑战！")
+        yield event.plain_result("\n".join(report))
+
+    async def handle_fight_boss(self, event: AstrMessageEvent, player: Player, boss_id: str, player_name: str):
+        """处理讨伐世界Boss的指令"""
+        if not boss_id:
+            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_FIGHT_BOSS} <Boss ID>」。")
+            return
+            
+        # 启动自动战斗
+        result_msg = await self.plugin.battle_manager.player_fight_boss(player, boss_id, player_name)
         yield event.plain_result(result_msg)
-
-    async def handle_fight_status(self, event: AstrMessageEvent):
-        _, status_report = await self.plugin.battle_manager.ensure_boss_exists_and_get_status()
-        yield event.plain_result(status_report)
