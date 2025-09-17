@@ -2,7 +2,7 @@
 # 核心游戏逻辑模块
 
 import random
-import asyncio
+import time
 from typing import Tuple, Dict, Any, Optional
 
 from .config_manager import config
@@ -30,7 +30,7 @@ def generate_new_player_stats(user_id: str) -> Player:
 
 def handle_check_in(player: Player) -> Tuple[bool, str, Player]:
     """处理签到逻辑"""
-    now = asyncio.get_running_loop().time()
+    now = time.time()
     if now - player.last_check_in < 22 * 60 * 60:
         return False, "道友，今日已经签到过了，请明日再来。", player
 
@@ -47,7 +47,7 @@ def handle_start_cultivation(player: Player) -> Tuple[bool, str, Player]:
         return False, f"道友当前正在「{player.state}」中，无法分心闭关。", player
     
     player.state = "修炼中"
-    player.state_start_time = asyncio.get_running_loop().time()
+    player.state_start_time = time.time()
     
     msg = "道友已进入冥想状态，开始闭关修炼。使用「出关」可查看修炼成果。"
     return True, msg, player
@@ -57,7 +57,7 @@ def handle_end_cultivation(player: Player) -> Tuple[bool, str, Player]:
     if player.state != "修炼中":
         return False, "道友尚未开始闭关，何谈出关？", player
     
-    now = asyncio.get_running_loop().time()
+    now = time.time()
     duration_minutes = (now - player.state_start_time) / 60
     
     if duration_minutes < 1:
@@ -80,12 +80,7 @@ def handle_end_cultivation(player: Player) -> Tuple[bool, str, Player]:
 
 def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
     """处理突破逻辑"""
-    current_level_info = config.level_map.get(player.level)
-    
-    if current_level_info is None:
-        return False, "发生未知错误：无法找到道友当前的境界信息。", player
-
-    current_level_index = current_level_info['index']
+    current_level_index = player.level_index
     
     if current_level_index >= len(config.level_data) - 1:
         return False, "道友已臻化境，达到当前世界的顶峰，无法再进行突破！", player
@@ -100,10 +95,11 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
         return False, msg, player
     
     if random.random() < success_rate:
-        player.level = next_level_info['level_name']
+        # 【关键】修复逻辑漏洞：更新 level_index
+        player.level_index = current_level_index + 1
         player.experience = 0 # 突破后修为清零
         
-        new_stats = _calculate_base_stats(current_level_index + 1)
+        new_stats = _calculate_base_stats(player.level_index)
         player.hp = new_stats['hp']
         player.max_hp = new_stats['max_hp']
         player.attack = new_stats['attack']
@@ -123,8 +119,8 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
 def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerEffect], str]:
     """计算物品效果，返回效果对象和描述文本"""
     item_info = config.item_data.get(item_id)
-    if not item_info or not (effect_config := item_info.get("effect")):
-        return None, f"【{item_info.get('name', '未知物品')}】似乎只是凡物，无法使用。"
+    if not item_info or not (effect_config := item_info.effect):
+        return None, f"【{item_info.name if item_info else '未知物品'}】似乎只是凡物，无法使用。"
 
     effect = PlayerEffect()
     messages = []
@@ -142,9 +138,9 @@ def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerE
         effect.hp = value
         messages.append(f"恢复了 {value} 点生命")
     else:
-         return None, f"你研究了半天，也没能参透【{item_info['name']}】的用法。"
+         return None, f"你研究了半天，也没能参透【{item_info.name}】的用法。"
 
-    full_message = f"你使用了 {quantity} 个【{item_info['name']}】，" + "，".join(messages) + "！"
+    full_message = f"你使用了 {quantity} 个【{item_info.name}】，" + "，".join(messages) + "！"
     return effect, full_message
 
 async def handle_create_sect(player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
@@ -189,12 +185,10 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     
     sect = await data_manager.get_sect_by_id(player.sect_id)
     if sect and sect['leader_id'] == player.user_id:
-        # 宗门不可无主，需要先传位或解散
         members = await data_manager.get_sect_members(player.sect_id)
         if len(members) > 1:
             return False, "道友身为一宗之主，身系宗门兴衰，不可轻易脱离！请先传位于他人或解散宗门。", None
         else:
-            # 如果宗门只剩自己，则直接解散
             await data_manager.delete_sect(player.sect_id)
 
     sect_name = player.sect_name
@@ -205,11 +199,7 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     return True, msg, player
 
 async def handle_pvp(attacker: Player, defender: Player) -> str:
-    """处理PVP逻辑，并返回战报 (异步)"""
-    # 非阻塞地执行同步战斗函数
-    loop = asyncio.get_running_loop()
-    _, _, combat_log = await loop.run_in_executor(
-        None, combat_manager.player_vs_player, attacker, defender
-    )
+    """处理PVP逻辑，并返回战报"""
+    _, _, combat_log = combat_manager.player_vs_player(attacker, defender)
     report = "\n".join(combat_log)
     return report

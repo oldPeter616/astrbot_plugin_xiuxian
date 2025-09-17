@@ -36,9 +36,6 @@ class ShopHandler:
         yield event.plain_result(reply_msg)
 
     async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):        
-        if quantity is None:
-            quantity = 1
-            
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_BUY} <物品名> [数量]`。")
             return
@@ -63,9 +60,6 @@ class ShopHandler:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
     async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player):
-        if quantity is None:
-            quantity = 1
-
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_USE_ITEM} <物品名> [数量]`。")
             return

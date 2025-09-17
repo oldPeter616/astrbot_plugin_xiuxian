@@ -32,7 +32,6 @@ class RealmHandler:
             return
 
         target_realm_id, _ = realm_found
-        # 通过 self.plugin 访问 realm_manager
         success, msg, updated_player = await self.plugin.realm_manager.start_session(player, target_realm_id)
 
         if success:

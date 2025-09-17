@@ -33,7 +33,6 @@ class CombatHandler:
         yield event.plain_result(report)
 
     async def handle_world_boss(self, event: AstrMessageEvent, player: Player):
-        # 通过 self.plugin 访问 battle_manager
         boss, status_msg = await self.plugin.battle_manager.ensure_boss_exists_and_get_status()
         if not boss:
             yield event.plain_result(status_msg)

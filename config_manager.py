@@ -1,5 +1,5 @@
 # config_manager.py
-# 负责读取和解析配置文件
+# 最终修正版：在初始化时自动调用 _load_all()
 
 import json
 from pathlib import Path
@@ -37,7 +37,6 @@ class Config:
         self.boss_name_to_id: Dict[str, str] = {}
 
         # --- 可配置属性 (带默认值) ---
-        # 确保所有指令都在此处声明，以防加载时出错
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
         self.CMD_CHECK_IN = "签到"
@@ -62,7 +61,6 @@ class Config:
         self.CMD_LEAVE_REALM = "离开秘境"
         self.CMD_HELP = "修仙帮助"
         
-        # 数值
         self.INITIAL_GOLD = 100
         self.CHECK_IN_REWARD_MIN = 50
         self.CHECK_IN_REWARD_MAX = 200
@@ -72,11 +70,12 @@ class Config:
         self.WORLD_BOSS_TEMPLATE_ID = "1"
         self.WORLD_BOSS_TOP_PLAYERS_AVG = 5
 
-        # 游戏规则
         self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
 
-        # 文件
         self.DATABASE_FILE = "xiuxian_data.db"
+
+        # 在初始化结束时，调用加载函数
+        self._load_all()
 
     def _load_json_data(self, file_path: Path) -> Any:
         if not file_path.exists():
@@ -135,7 +134,7 @@ class Config:
 
     def get_item_by_name(self, name: str) -> Optional[Tuple[str, Item]]:
         item_id = self.item_name_to_id.get(name)
-        return (item_id, self.item_data[item_id]) if item_id else None
+        return (item_id, self.item_data[item_id]) if item_id and item_id in self.item_data else None
 
     def get_realm_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
         realm_id = self.realm_name_to_id.get(name)

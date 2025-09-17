@@ -4,7 +4,6 @@ from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
 
-# 声明 __all__ 以便 main.py 精确导入
 __all__ = ["PlayerHandler"]
 
 class PlayerHandler:
