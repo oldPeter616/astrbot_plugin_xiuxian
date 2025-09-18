@@ -20,7 +20,7 @@ from .handlers import (
     "astrbot_plugin_xiuxian", 
     "oldPeter616", 
     "基于astrbot框架的文字修仙游戏", 
-    "v1.2.0", 
+    "v2.0.0", 
     "https://github.com/oldPeter616/astrbot_plugin_xiuxian"
 )
 class XiuXianPlugin(Star):

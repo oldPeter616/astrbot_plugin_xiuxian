@@ -1,14 +1,17 @@
 {
-    "mob_wolf": {
-        "name": "妖狼",
-        "tags": ["野兽", "迅捷"]
-    },
-    "mob_bat": {
-        "name": "吸血妖蝠",
-        "tags": ["野兽"]
-    },
-    "mob_spider": {
-        "name": "剧毒蜘蛛",
-        "tags": ["野兽", "剧毒"]
-    }
+    "mob_wolf": { "name": "妖狼", "tags": ["野兽", "迅捷"] },
+    "mob_bat": { "name": "吸血妖蝠", "tags": ["野兽"] },
+    "mob_spider": { "name": "剧毒蜘蛛", "tags": ["野兽", "剧毒"] },
+    "mob_ghost": { "name": "游魂", "tags": ["鬼魅"] },
+    "mob_boar": { "name": "野猪", "tags": ["野兽", "魔族"] },
+    "mob_fire_spirit": { "name": "火元素", "tags": ["元素·火"] },
+    "mob_skeleton": { "name": "骷髅兵", "tags": ["不死"] },
+    "mob_puppet": { "name": "傀儡", "tags": ["机械"] },
+    "mob_ice_spirit": { "name": "冰元素", "tags": ["元素·冰"] },
+    "mob_pixie": { "name": "花精", "tags": ["妖精"] },
+    "mob_zombie": { "name": "僵尸", "tags": ["不死", "剧毒"] },
+    "mob_golem": { "name": "岩石傀儡", "tags": ["机械", "野兽"] },
+    "mob_imp": { "name": "小恶魔", "tags": ["魔族", "迅捷"] },
+    "mob_wraith": { "name": "怨灵", "tags": ["鬼魅", "元素·冰"] },
+    "mob_dryad": { "name": "树精", "tags": ["妖精", "野兽"] }
 }
