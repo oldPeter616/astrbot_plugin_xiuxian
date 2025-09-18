@@ -2,6 +2,7 @@
 # 动态内容生成器模块
 
 import random
+import time
 from typing import Dict, Any, List, Optional
 
 from astrbot.api import logger
@@ -141,46 +142,46 @@ class MonsterGenerator:
         return instance
 
 class RealmGenerator:
-    """秘境实例生成器"""
+    """完全动态的秘境实例生成器"""
 
     @staticmethod
-    def generate(realm_template_id: str) -> Optional[RealmInstance]:
-        """根据秘境模板生成一个完整的秘境探索实例"""
-        template = config.realm_data.get(realm_template_id)
-        if not template:
-            logger.warning(f"尝试生成秘境失败：找不到模板ID {realm_template_id}")
+    def generate_for_player(player: Player) -> Optional[RealmInstance]:
+        """根据玩家的当前状态动态生成一个秘境实例"""
+        level_index = player.level_index
+        
+        # 1. 计算秘境层数
+        total_floors = 3 + (level_index // 2)
+        
+        # 2. 从配置中获取可用的怪物和Boss列表
+        monster_pool = list(config.monster_data.keys())
+        boss_pool = list(config.boss_data.keys())
+        
+        if not monster_pool or not boss_pool:
+            logger.error("秘境生成失败：怪物池或Boss池为空，请检查 monsters.json 和 bosses.json。")
             return None
-
-        floor_range = template.get("floor_range", [3, 3])
-        total_floors = random.randint(floor_range[0], floor_range[1])
-        
-        floor_events: List[FloorEvent] = []
-        event_pool = template.get("event_pool", [])
-        weights = [event.get("weight", 0) for event in event_pool]
-        
-        if not event_pool or sum(weights) <= 0:
-            return RealmInstance(id=realm_template_id, total_floors=total_floors, floors=[])
-
-        for _ in range(total_floors - 1):
-            chosen_event_template = random.choices(event_pool, weights=weights, k=1)[0]
-            event_type = chosen_event_template["type"]
             
-            if event_type == "monster":
-                monster_pool = template.get("monster_pool", [])
-                if monster_pool:
-                    monster_id = random.choice(monster_pool)
-                    floor_events.append(FloorEvent(type="monster", data={"id": monster_id}))
-                else:
-                    floor_events.append(FloorEvent(type="empty", data={}))
-            elif event_type == "treasure":
-                 floor_events.append(FloorEvent(type="treasure", data=chosen_event_template.get("rewards", {})))
+        floor_events: List[FloorEvent] = []
+        
+        # 3. 生成中间楼层的事件
+        for _ in range(total_floors - 1):
+            # 70% 概率是怪物，30% 是宝藏
+            if random.random() < 0.7: 
+                monster_id = random.choice(monster_pool)
+                floor_events.append(FloorEvent(type="monster", data={"id": monster_id}))
             else:
-                floor_events.append(FloorEvent(type="empty", data={}))
+                # 宝箱奖励随等级提升
+                gold_reward = random.randint(50, 150) * (1 + level_index)
+                floor_events.append(FloorEvent(type="treasure", data={"rewards": {"gold": int(gold_reward)}}))
 
-        floor_events.append(FloorEvent(type="boss", data={"id": template["boss_id"]}))
+        # 4. 生成最终楼层的Boss事件
+        final_boss_id = random.choice(boss_pool)
+        floor_events.append(FloorEvent(type="boss", data={"id": final_boss_id}))
 
+        # 5. 组装并返回秘境实例 (id 可以用玩家等级和时间戳等组合，确保唯一性)
+        realm_id = f"dynamic_{player.level_index}_{int(time.time())}"
+        
         return RealmInstance(
-            id=realm_template_id,
+            id=realm_id,
             total_floors=total_floors,
             floors=floor_events
         )

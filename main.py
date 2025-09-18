@@ -184,17 +184,13 @@ class XiuXianPlugin(Star):
         async for r in self.combat_handler.handle_fight_boss(event, player, boss_id, player_name): yield r
         
     # Realm Commands
-    @filter.command(config.CMD_REALM_LIST, "查看所有可探索的秘境")
-    async def handle_realm_list(self, event: AstrMessageEvent):
-        async for r in self.realm_handler.handle_realm_list(event): yield r
-
-    @filter.command(config.CMD_ENTER_REALM, "进入秘境开始探索")
-    async def handle_enter_realm(self, event: AstrMessageEvent, realm_name: str):
+    @filter.command(config.CMD_ENTER_REALM, "根据当前境界，探索一个随机秘境")
+    async def handle_enter_realm(self, event: AstrMessageEvent):
         player = await data_manager.get_player_by_id(event.get_sender_id())
         if not player:
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
             return
-        async for r in self.realm_handler.handle_enter_realm(event, realm_name, player): yield r
+        async for r in self.realm_handler.handle_enter_realm(event, player): yield r
 
     @filter.command(config.CMD_REALM_ADVANCE, "在秘境中前进")
     async def handle_realm_advance(self, event: AstrMessageEvent):

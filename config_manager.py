@@ -37,6 +37,8 @@ class Config:
         self.boss_name_to_id: Dict[str, str] = {}
 
         # --- 可配置属性 (带默认值) ---
+        self.CMD_BOSS_LIST = "查看世界boss"
+        self.CMD_FIGHT_BOSS = "讨伐boss"
         self.CMD_START_XIUXIAN = "我要修仙"
         self.CMD_PLAYER_INFO = "我的信息"
         self.CMD_CHECK_IN = "签到"
@@ -52,9 +54,6 @@ class Config:
         self.CMD_LEAVE_SECT = "退出宗门"
         self.CMD_USE_ITEM = "使用"
         self.CMD_SPAR = "切磋"
-        self.CMD_BOSS_LIST = "查看世界boss"
-        self.CMD_FIGHT_BOSS = "讨伐boss"
-        self.CMD_REALM_LIST = "秘境列表"
         self.CMD_ENTER_REALM = "探索秘境"
         self.CMD_REALM_ADVANCE = "前进"
         self.CMD_LEAVE_REALM = "离开秘境"
