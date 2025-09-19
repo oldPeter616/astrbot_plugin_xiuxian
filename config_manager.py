@@ -1,5 +1,4 @@
 # config_manager.py
-# 最终修正版：在初始化时自动调用 _load_all()
 
 import json
 from pathlib import Path
@@ -10,7 +9,6 @@ from .models import Item
 
 class Config:
     def __init__(self, base_dir: Path):
-        # --- 文件路径定义 ---
         self._base_dir = base_dir
         self._paths = {
             "config": base_dir / "config.json",
@@ -22,7 +20,6 @@ class Config:
             "tag": base_dir / "tags.json"
         }
 
-        # --- 数据容器 ---
         self.level_data: List[dict] = []
         self.item_data: Dict[str, Item] = {}
         self.boss_data: Dict[str, dict] = {}
@@ -30,7 +27,6 @@ class Config:
         self.realm_data: Dict[str, dict] = {}
         self.tag_data: Dict[str, dict] = {}
 
-        # --- 预处理数据映射 ---
         self.level_map: Dict[str, dict] = {}
         self.item_name_to_id: Dict[str, str] = {}
         self.realm_name_to_id: Dict[str, str] = {}
@@ -65,14 +61,15 @@ class Config:
         self.BASE_EXP_PER_MINUTE = 10
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
-        self.WORLD_BOSS_TEMPLATE_ID = "1"
         self.WORLD_BOSS_TOP_PLAYERS_AVG = 3
+        self.REALM_BASE_FLOORS = 3
+        self.REALM_FLOORS_PER_LEVEL_DIVISOR = 2
+        self.REALM_MONSTER_CHANCE = 0.7
 
         self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
 
         self.DATABASE_FILE = "xiuxian_data.db"
 
-        # 在初始化结束时，调用加载函数
         self._load_all()
 
     def _load_json_data(self, file_path: Path) -> Any:
@@ -111,7 +108,6 @@ class Config:
         self.realm_data = self._load_json_data(self._paths["realm"])
         self.tag_data = self._load_json_data(self._paths["tag"])
 
-        # --- 预处理数据 ---
         self.level_map = {info["level_name"]: {"index": i, **info}
                           for i, info in enumerate(self.level_data) if "level_name" in info}
 

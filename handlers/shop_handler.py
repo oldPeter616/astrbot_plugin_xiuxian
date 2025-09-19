@@ -51,8 +51,12 @@ class ShopHandler:
         success, reason = await data_manager.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
-            new_gold = player.gold - total_cost
-            yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {new_gold}。")
+            updated_player = await data_manager.get_player_by_id(player.user_id)
+            if updated_player:
+                yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {updated_player.gold}。")
+            else:
+                # 极端情况下的回退
+                yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。")
         else:
             if reason == "ERROR_INSUFFICIENT_FUNDS":
                 yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。")

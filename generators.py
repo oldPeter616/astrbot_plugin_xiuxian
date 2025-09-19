@@ -35,14 +35,12 @@ class MonsterGenerator:
             logger.warning(f"尝试创建怪物失败：找不到模板ID {template_id}")
             return None
 
-        # 1. 计算基础属性 (与玩家等级挂钩)
         base_hp = 15 * player_level_index + 60
         base_attack = 2 * player_level_index + 8
         base_defense = 1 * player_level_index + 4
         base_gold = 3 * player_level_index + 10
         base_exp = 5 * player_level_index + 20
 
-        # 2. 初始化最终属性和名称
         final_name = template["name"]
         final_hp = base_hp
         final_attack = base_attack
@@ -51,28 +49,23 @@ class MonsterGenerator:
         final_exp = base_exp
         combined_loot_table = []
 
-        # 3. 应用标签效果
         for tag_name in template.get("tags", []):
             tag_effect = config.tag_data.get(tag_name)
             if not tag_effect:
                 continue
             
-            # 修改名称
             if "name_prefix" in tag_effect:
                 final_name = f"【{tag_effect['name_prefix']}】{final_name}"
             
-            # 应用属性乘数
             final_hp *= tag_effect.get("hp_multiplier", 1.0)
             final_attack *= tag_effect.get("attack_multiplier", 1.0)
             final_defense *= tag_effect.get("defense_multiplier", 1.0)
             final_gold *= tag_effect.get("gold_multiplier", 1.0)
             final_exp *= tag_effect.get("exp_multiplier", 1.0)
 
-            # 合并掉落表
             if "add_to_loot" in tag_effect:
                 combined_loot_table.extend(tag_effect["add_to_loot"])
         
-        # 4. 生成最终实例
         final_hp = int(final_hp)
         instance = Monster(
             id=template_id,
@@ -97,7 +90,6 @@ class MonsterGenerator:
             logger.warning(f"尝试创建Boss失败：找不到模板ID {template_id}")
             return None
 
-        # Boss的基础属性更高
         base_hp = 100 * player_level_index + 500
         base_attack = 10 * player_level_index + 40
         base_defense = 5 * player_level_index + 20
@@ -149,10 +141,8 @@ class RealmGenerator:
         """根据玩家的当前状态动态生成一个秘境实例"""
         level_index = player.level_index
         
-        # 1. 计算秘境层数
-        total_floors = 3 + (level_index // 2)
+        total_floors = config.REALM_BASE_FLOORS + (level_index // config.REALM_FLOORS_PER_LEVEL_DIVISOR)
         
-        # 2. 从配置中获取可用的怪物和Boss列表
         monster_pool = list(config.monster_data.keys())
         boss_pool = list(config.boss_data.keys())
         
@@ -162,22 +152,17 @@ class RealmGenerator:
             
         floor_events: List[FloorEvent] = []
         
-        # 3. 生成中间楼层的事件
         for _ in range(total_floors - 1):
-            # 70% 概率是怪物，30% 是宝藏
-            if random.random() < 0.7: 
+            if random.random() < config.REALM_MONSTER_CHANCE: 
                 monster_id = random.choice(monster_pool)
                 floor_events.append(FloorEvent(type="monster", data={"id": monster_id}))
             else:
-                # 宝箱奖励随等级提升
                 gold_reward = random.randint(50, 150) * (1 + level_index)
                 floor_events.append(FloorEvent(type="treasure", data={"rewards": {"gold": int(gold_reward)}}))
 
-        # 4. 生成最终楼层的Boss事件
         final_boss_id = random.choice(boss_pool)
         floor_events.append(FloorEvent(type="boss", data={"id": final_boss_id}))
 
-        # 5. 组装并返回秘境实例 (id 可以用玩家等级和时间戳等组合，确保唯一性)
         realm_id = f"dynamic_{player.level_index}_{int(time.time())}"
         
         return RealmInstance(

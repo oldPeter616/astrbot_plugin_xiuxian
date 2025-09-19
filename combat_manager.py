@@ -18,15 +18,20 @@ class BattleManager:
         active_boss_instances = await data_manager.get_active_bosses()
         active_boss_map = {b.boss_id: b for b in active_boss_instances}
         all_boss_templates = config.boss_data
+        
+        top_players = await data_manager.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
+        
         for boss_id, template in all_boss_templates.items():
             if boss_id not in active_boss_map:
                 logger.info(f"世界Boss {template['name']} (ID: {boss_id}) 当前未激活，开始生成...")
-                top_players = await data_manager.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
+                
                 avg_level_index = int(sum(p.level_index for p in top_players) / len(top_players)) if top_players else 1
+                
                 boss_with_stats = MonsterGenerator.create_boss(boss_id, avg_level_index)
                 if not boss_with_stats:
                     logger.error(f"无法为Boss ID {boss_id} 生成属性，请检查配置。")
                     continue
+                
                 new_boss_instance = ActiveWorldBoss(
                     boss_id=boss_id,
                     current_hp=boss_with_stats.max_hp,
@@ -36,6 +41,7 @@ class BattleManager:
                 )
                 await data_manager.create_active_boss(new_boss_instance)
                 active_boss_map[boss_id] = new_boss_instance
+        
         result = []
         for boss_id, active_instance in active_boss_map.items():
             boss_template = MonsterGenerator.create_boss(boss_id, active_instance.level_index)
