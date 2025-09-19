@@ -95,9 +95,8 @@ def handle_breakthrough(player: Player) -> Tuple[bool, str, Player]:
         return False, msg, player
     
     if random.random() < success_rate:
-        # 【关键】修复逻辑漏洞：更新 level_index
         player.level_index = current_level_index + 1
-        player.experience = 0 # 突破后修为清零
+        player.experience = 0
         
         new_stats = _calculate_base_stats(player.level_index)
         player.hp = new_stats['hp']
@@ -198,8 +197,8 @@ async def handle_leave_sect(player: Player) -> Tuple[bool, str, Optional[Player]
     msg = f"道不同不相为谋。道友已脱离「{sect_name}」，从此山高水长，江湖再见。"
     return True, msg, player
 
-async def handle_pvp(attacker: Player, defender: Player) -> str:
+async def handle_pvp(attacker: Player, defender: Player, attacker_name: Optional[str], defender_name: Optional[str]) -> str:
     """处理PVP逻辑，并返回战报"""
-    _, _, combat_log = combat_manager.player_vs_player(attacker, defender)
+    _, _, combat_log = combat_manager.player_vs_player(attacker, defender, attacker_name, defender_name)
     report = "\n".join(combat_log)
     return report

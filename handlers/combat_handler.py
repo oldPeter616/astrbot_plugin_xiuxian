@@ -1,6 +1,7 @@
 # handlers/combat_handler.py
+
 from astrbot.api.event import AstrMessageEvent
-from astrbot.core.message.components import At 
+from astrbot.core.message.components import At
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -19,10 +20,14 @@ class CombatHandler:
 
         message_obj = event.message_obj
         mentioned_user_id = None
+        defender_name = None
+
         if hasattr(message_obj, "message"):
             for comp in message_obj.message:
                 if isinstance(comp, At):
                     mentioned_user_id = comp.qq
+                    if hasattr(comp, 'name'):
+                        defender_name = comp.name
                     break
         
         if not mentioned_user_id:
@@ -41,8 +46,10 @@ class CombatHandler:
         if defender.hp < defender.max_hp:
             yield event.plain_result("对方气血不满，此时挑战非君子所为。")
             return
-            
-        report = await xiuxian_logic.handle_pvp(attacker, defender)
+        
+        attacker_name = event.get_sender_name()
+        
+        report = await xiuxian_logic.handle_pvp(attacker, defender, attacker_name, defender_name)
         yield event.plain_result(report)
 
     async def handle_boss_list(self, event: AstrMessageEvent):
@@ -59,7 +66,6 @@ class CombatHandler:
                 f"【{template.name}】 (ID: {instance.boss_id})\n"
                 f"  ❤️剩余生命: {instance.current_hp}/{instance.max_hp}"
             )
-            # 显示伤害贡献榜前三名
             participants = await data_manager.get_boss_participants(instance.boss_id)
             if participants:
                 report.append("  - 伤害贡献榜 -")
@@ -75,6 +81,5 @@ class CombatHandler:
             yield event.plain_result(f"指令格式错误！请使用「{config.CMD_FIGHT_BOSS} <Boss ID>」。")
             return
             
-        # 启动自动战斗
         result_msg = await self.plugin.battle_manager.player_fight_boss(player, boss_id, player_name)
         yield event.plain_result(result_msg)

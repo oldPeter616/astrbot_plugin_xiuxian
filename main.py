@@ -106,7 +106,6 @@ class XiuXianPlugin(Star):
         
     @filter.command(config.CMD_BACKPACK, "查看你的背包")
     async def handle_backpack(self, event: AstrMessageEvent):
-        
         player = await data_manager.get_player_by_id(event.get_sender_id())
         if not player:
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")

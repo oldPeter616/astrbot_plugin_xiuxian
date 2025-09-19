@@ -64,7 +64,7 @@ class BattleManager:
         while p_clone.hp > 1 and boss_hp > 0 and turn < max_turns:
             turn += 1
             damage_to_boss = max(1, p_clone.attack - boss.defense)
-            damage_to_boss = min(damage_to_boss, boss_hp) # 伤害不超过boss剩余血量
+            damage_to_boss = min(damage_to_boss, boss_hp)
             boss_hp -= damage_to_boss
             total_damage_dealt += damage_to_boss
 
@@ -78,11 +78,10 @@ class BattleManager:
         if p_clone.hp < 1:
             p_clone.hp = 1
 
-        # --- 生成战报 ---
         combat_summary = [f"你向【{boss.name}】发起了挑战！", "……激战过后……"]
         if p_clone.hp <= 1 and boss_hp > 0:
             combat_summary.append("✗ 你不敌妖兽，力竭倒下！")
-        else: # boss 倒下或平局
+        else:
             combat_summary.append("✓ 你坚持到了最后！")
 
         combat_summary.append(f"- 战斗历时: {turn}回合")
@@ -154,7 +153,6 @@ class BattleManager:
         
         victory = monster_hp <= 0
 
-        # --- 生成战报 ---
         combat_summary = [f"你遭遇了【{monster.name}】！", "……激战过后……"]
         if victory:
             combat_summary.append("✓ 你获得了胜利！")
@@ -167,11 +165,14 @@ class BattleManager:
         
         return victory, combat_summary, p_clone
 
-def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Player], Optional[Player], List[str]]:
+def player_vs_player(attacker: Player, defender: Player, attacker_name: Optional[str], defender_name: Optional[str]) -> Tuple[Optional[Player], Optional[Player], List[str]]:
     """处理玩家 vs 玩家的战斗逻辑"""
     p1 = attacker.clone()
     p2 = defender.clone()
     
+    p1_display = attacker_name or attacker.user_id[-4:]
+    p2_display = defender_name or defender.user_id[-4:]
+
     p1_damage_dealt = 0
     p2_damage_dealt = 0
     turn = 0
@@ -193,25 +194,27 @@ def player_vs_player(attacker: Player, defender: Player) -> Tuple[Optional[Playe
             p1.hp = 1
             break
             
-    # --- 生成战报 ---
-    combat_summary = [f"⚔️【切磋】{attacker.user_id[-4:]} vs {defender.user_id[-4:]}", "……一番激斗……"]
+    combat_summary = [f"⚔️【切磋】{p1_display} vs {p2_display}", "……一番激斗……"]
     
     winner = None
+    winner_display = ""
     if p1.hp <= 1:
         winner = defender
-        combat_summary.append(f"🏆 {defender.user_id[-4:]} 技高一筹，获得了胜利！")
+        winner_display = p2_display
+        combat_summary.append(f"🏆 {winner_display} 技高一筹，获得了胜利！")
     elif p2.hp <= 1:
         winner = attacker
-        combat_summary.append(f"🏆 {attacker.user_id[-4:]} 技高一筹，获得了胜利！")
-    else: # 平局
+        winner_display = p1_display
+        combat_summary.append(f"🏆 {winner_display} 技高一筹，获得了胜利！")
+    else:
         combat_summary.append("平【平局】双方大战三十回合，未分胜负！")
 
-    combat_summary.append(f"\n--- {attacker.user_id[-4:]} 战报 ---")
+    combat_summary.append(f"\n--- {p1_display} 战报 ---")
     combat_summary.append(f"- 总计伤害: {p1_damage_dealt}点")
     combat_summary.append(f"- 承受伤害: {p2_damage_dealt}点")
     combat_summary.append(f"- 剩余生命: {p1.hp}/{p1.max_hp}")
 
-    combat_summary.append(f"\n--- {defender.user_id[-4:]} 战报 ---")
+    combat_summary.append(f"\n--- {p2_display} 战报 ---")
     combat_summary.append(f"- 总计伤害: {p2_damage_dealt}点")
     combat_summary.append(f"- 承受伤害: {p1_damage_dealt}点")
     combat_summary.append(f"- 剩余生命: {p2.hp}/{p2.max_hp}")
