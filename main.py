@@ -1,175 +1,277 @@
 # main.py
-
-import aiosqlite
-from functools import wraps
-from typing import Optional, Callable, Awaitable
 from astrbot.api import logger
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.core.config.astrbot_config import AstrBotConfig
+from data.plugins.astrbot_plugin_xiuxian.data.migration import MigrationManager
 
 # --- 核心依赖 ---
-from . import data_manager, xiuxian_logic, combat_manager, realm_manager
+from .data.data_manager import DataBase
+from .core.combat_manager import BattleManager
+from .core.realm_manager import RealmManager
 from .config_manager import config
-from .models import Player
+
 
 # --- 导入独立的 Handler 类 ---
 from .handlers import (
-    MiscHandler, PlayerHandler, ShopHandler, SectHandler, 
-    CombatHandler, RealmHandler
+    MiscHandler,
+    PlayerHandler,
+    ShopHandler,
+    SectHandler,
+    CombatHandler,
+    RealmHandler,
 )
 
-@register(
-    "astrbot_plugin_xiuxian", 
-    "oldPeter616", 
-    "基于astrbot框架的文字修仙游戏", 
-    "v2.0.0", 
-    "https://github.com/oldPeter616/astrbot_plugin_xiuxian"
-)
+
+@register("astrbot_plugin_xiuxian", "oldPeter616", "...", "...")
 class XiuXianPlugin(Star):
-    
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        # --- 核心管理器 ---
-        self.battle_manager = combat_manager.BattleManager()
-        self.realm_manager = realm_manager.RealmManager()
-
-        # --- 实例化所有 Handler，将 self (插件实例) 传入 ---
-        self.misc_handler = MiscHandler(self)
-        self.player_handler = PlayerHandler(self)
-        self.shop_handler = ShopHandler(self)
-        self.sect_handler = SectHandler(self)
-        self.combat_handler = CombatHandler(self)
-        self.realm_handler = RealmHandler(self)
+        self.conf = config # astrbot_config, 备用
 
     async def initialize(self):
-        await data_manager.init_db_pool()
-        logger.info("修仙插件已加载。")
+        # --- 数据库 ---
+        self.db = DataBase()
+        await self.db.init()
+
+        # --- 数据迁移 ---
+        self.migration_manager = MigrationManager(target_version=8)
+        await self.migration_manager.migrate(self.db._conn)
+
+        # --- 核心管理器 ---
+        self.battle_manager = BattleManager(self.db)
+        self.realm_manager = RealmManager(self.db)
+
+        # --- 实例化所有 Handler ---
+        self.misc_handler = MiscHandler(self.db)
+        self.player_handler = PlayerHandler(self.db)
+        self.shop_handler = ShopHandler(self.db)
+        self.sect_handler = SectHandler(self.db)
+        self.combat_handler = CombatHandler(self.db)
+        self.realm_handler = RealmHandler(self.db)
+
+        logger.info("修仙插件已加载")
 
     async def terminate(self):
-        await data_manager.close_db_pool()
-        logger.info("修仙插件已卸载。")
-
-    async def _execute_with_player(self, event: AstrMessageEvent, handler_func: Callable, *args, **kwargs):
-        """
-        一个通用的异步生成器执行器。
-        1. 检查玩家是否存在。
-        2. 如果不存在，yield错误信息。
-        3. 如果存在，则调用指定的handler_func并yield其结果。
-        """
-        player = await data_manager.get_player_by_id(event.get_sender_id())
-        if not player:
-            yield event.plain_result(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
-            return
-        
-        async for r in handler_func(event, player, *args, **kwargs):
-            yield r
-
-    # --- 指令委托实现 ---
+        await self.db.close()
+        logger.info("修仙插件已优雅关闭")
 
     # Misc Commands
     @filter.command(config.CMD_HELP, "显示帮助信息")
     async def handle_help(self, event: AstrMessageEvent):
-        async for r in self.misc_handler.handle_help(event): yield r
+        async for r in self.misc_handler.handle_help(event):
+            yield r
 
     # Player Commands
     @filter.command(config.CMD_START_XIUXIAN, "开始你的修仙之路")
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
-        async for r in self.player_handler.handle_start_xiuxian(event): yield r
+        async for r in self.player_handler.handle_start_xiuxian(event):
+            yield r
 
     @filter.command(config.CMD_PLAYER_INFO, "查看你的角色信息")
     async def handle_player_info(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.player_handler.handle_player_info):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.player_handler.handle_player_info(event, player):
             yield r
 
     @filter.command(config.CMD_CHECK_IN, "每日签到领取奖励")
     async def handle_check_in(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.player_handler.handle_check_in):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.player_handler.handle_check_in(event, player):
             yield r
-        
+
     @filter.command(config.CMD_START_CULTIVATION, "开始闭关修炼")
     async def handle_start_cultivation(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.player_handler.handle_start_cultivation):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.player_handler.handle_start_cultivation(event, player):
             yield r
 
     @filter.command(config.CMD_END_CULTIVATION, "结束闭关修炼")
     async def handle_end_cultivation(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.player_handler.handle_end_cultivation):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.player_handler.handle_end_cultivation(event, player):
             yield r
 
     @filter.command(config.CMD_BREAKTHROUGH, "尝试突破当前境界")
     async def handle_breakthrough(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.player_handler.handle_breakthrough):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.player_handler.handle_breakthrough(event, player):
             yield r
 
     # Shop Commands
     @filter.command(config.CMD_SHOP, "查看坊市商品")
     async def handle_shop(self, event: AstrMessageEvent):
-        async for r in self.shop_handler.handle_shop(event): yield r
-        
+        async for r in self.shop_handler.handle_shop(event):
+            yield r
+
     @filter.command(config.CMD_BACKPACK, "查看你的背包")
     async def handle_backpack(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.shop_handler.handle_backpack):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.shop_handler.handle_backpack(event, player):
             yield r
 
     @filter.command(config.CMD_BUY, "购买物品")
-    async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int = 1):
-        async for r in self._execute_with_player(event, self.shop_handler.handle_buy, item_name, quantity):
+    async def handle_buy(
+        self, event: AstrMessageEvent, item_name: str, quantity: int = 1
+    ):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.shop_handler.handle_buy(event, item_name, quantity, player):
             yield r
-        
+
     @filter.command(config.CMD_USE_ITEM, "使用背包中的物品")
-    async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int = 1):
-        async for r in self._execute_with_player(event, self.shop_handler.handle_use, item_name, quantity):
+    async def handle_use(
+        self, event: AstrMessageEvent, item_name: str, quantity: int = 1
+    ):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.shop_handler.handle_use(event, item_name, quantity, player):
             yield r
 
     # Sect Commands
     @filter.command(config.CMD_CREATE_SECT, "创建你的宗门")
     async def handle_create_sect(self, event: AstrMessageEvent, sect_name: str):
-        async for r in self._execute_with_player(event, self.sect_handler.handle_create_sect, sect_name):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.sect_handler.handle_create_sect(event, sect_name, player):
             yield r
 
     @filter.command(config.CMD_JOIN_SECT, "加入一个宗门")
     async def handle_join_sect(self, event: AstrMessageEvent, sect_name: str):
-        async for r in self._execute_with_player(event, self.sect_handler.handle_join_sect, sect_name):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.sect_handler.handle_join_sect(event, sect_name, player):
             yield r
 
     @filter.command(config.CMD_LEAVE_SECT, "退出当前宗门")
     async def handle_leave_sect(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.sect_handler.handle_leave_sect):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.sect_handler.handle_leave_sect(event, player):
             yield r
-        
+
     @filter.command(config.CMD_MY_SECT, "查看我的宗门信息")
     async def handle_my_sect(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.sect_handler.handle_my_sect):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.sect_handler.handle_my_sect(event, player):
             yield r
-        
+
     # Combat Commands
     @filter.command(config.CMD_SPAR, "与其他玩家切磋")
     async def handle_spar(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.combat_handler.handle_spar):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.combat_handler.handle_spar(event, player):
             yield r
-        
+
     @filter.command(config.CMD_BOSS_LIST, "查看当前所有世界Boss")
     async def handle_boss_list(self, event: AstrMessageEvent):
-        async for r in self.combat_handler.handle_boss_list(event): yield r
+        async for r in self.combat_handler.handle_boss_list(event):
+            yield r
 
     @filter.command(config.CMD_FIGHT_BOSS, "讨伐指定ID的世界Boss")
     async def handle_fight_boss(self, event: AstrMessageEvent, boss_id: str):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
         player_name = event.get_sender_name()
-        async for r in self._execute_with_player(event, self.combat_handler.handle_fight_boss, boss_id, player_name):
+        async for r in self.combat_handler.handle_fight_boss(
+            event, player, boss_id, player_name
+        ):
             yield r
-        
+
     # Realm Commands
     @filter.command(config.CMD_ENTER_REALM, "根据当前境界，探索一个随机秘境")
     async def handle_enter_realm(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.realm_handler.handle_enter_realm):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.realm_handler.handle_enter_realm(event, player):
             yield r
 
     @filter.command(config.CMD_REALM_ADVANCE, "在秘境中前进")
     async def handle_realm_advance(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.realm_handler.handle_realm_advance):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.realm_handler.handle_realm_advance(event, player):
             yield r
 
     @filter.command(config.CMD_LEAVE_REALM, "离开当前秘境")
     async def handle_leave_realm(self, event: AstrMessageEvent):
-        async for r in self._execute_with_player(event, self.realm_handler.handle_leave_realm):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result(
+                f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。"
+            )
+            return
+        async for r in self.realm_handler.handle_leave_realm(event, player):
             yield r

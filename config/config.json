@@ -29,10 +29,7 @@
         "BASE_EXP_PER_MINUTE": 10,
         "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": 0.1,
         "CREATE_SECT_COST": 5000,
-        "WORLD_BOSS_TOP_PLAYERS_AVG": 5,
-        "REALM_BASE_FLOORS": 3,
-        "REALM_FLOORS_PER_LEVEL_DIVISOR": 2,
-        "REALM_MONSTER_CHANCE": 0.7
+        "WORLD_BOSS_TOP_PLAYERS_AVG": 5
     },
     "FILES": {
         "DATABASE_FILE": "xiuxian_data.db"

@@ -1,5 +1,5 @@
 name: astrbot_plugin_xiuxian # 这是你的插件的唯一识别名。
 desc: 基于astrbot框架的文字修仙游戏 # 插件简短描述
-version: v2.0.0 # 插件版本号。格式：v1.1.1 或者 v1.1
+version: v2.0.1 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: oldPeter616 # 作者
 repo: https://github.com/oldPeter616/astrbot_plugin_xiuxian # 插件的仓库地址

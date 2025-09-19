@@ -6,7 +6,14 @@
     "gold_multiplier": 1.0,
     "exp_multiplier": 1.1,
     "add_to_loot": [
-      { "item_id": "2001", "chance": 0.1, "quantity": [1, 2] }
+      {
+        "item_id": "2001",
+        "chance": 0.1,
+        "quantity": [
+          1,
+          2
+        ]
+      }
     ]
   },
   "迅捷": {
@@ -19,7 +26,14 @@
     "attack_multiplier": 1.1,
     "description_suffix": "（它的攻击附带着致命的毒素！）",
     "add_to_loot": [
-      { "item_id": "1001", "chance": 0.05, "quantity": [1, 1] }
+      {
+        "item_id": "1001",
+        "chance": 0.05,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   },
   "精英": {
@@ -38,8 +52,22 @@
     "exp_multiplier": 5.0,
     "name_prefix": "领主",
     "add_to_loot": [
-      { "item_id": "1002", "chance": 1.0, "quantity": [1, 3] },
-      { "item_id": "2002", "chance": 0.3, "quantity": [1, 1] }
+      {
+        "item_id": "1002",
+        "chance": 1.0,
+        "quantity": [
+          1,
+          3
+        ]
+      },
+      {
+        "item_id": "2002",
+        "chance": 0.3,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   },
   "魔族": {
@@ -50,7 +78,14 @@
     "exp_multiplier": 1.5,
     "name_prefix": "魔化",
     "add_to_loot": [
-      { "item_id": "2005", "chance": 0.2, "quantity": [1, 1] }
+      {
+        "item_id": "2005",
+        "chance": 0.2,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   },
   "鬼魅": {
@@ -59,7 +94,14 @@
     "defense_multiplier": 1.2,
     "description_suffix": "（它的身形飘忽不定！）",
     "add_to_loot": [
-      { "item_id": "2006", "chance": 0.15, "quantity": [1, 2] }
+      {
+        "item_id": "2006",
+        "chance": 0.15,
+        "quantity": [
+          1,
+          2
+        ]
+      }
     ]
   },
   "元素·火": {
@@ -68,7 +110,14 @@
     "defense_multiplier": 1.1,
     "name_prefix": "炎狱",
     "add_to_loot": [
-      { "item_id": "2007", "chance": 0.2, "quantity": [1, 1] }
+      {
+        "item_id": "2007",
+        "chance": 0.2,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   },
   "不死": {
@@ -79,7 +128,14 @@
     "name_prefix": "骸骨",
     "description_suffix": "（它感受不到疼痛！）",
     "add_to_loot": [
-      { "item_id": "2008", "chance": 0.25, "quantity": [1, 3] }
+      {
+        "item_id": "2008",
+        "chance": 0.25,
+        "quantity": [
+          1,
+          3
+        ]
+      }
     ]
   },
   "机械": {
@@ -89,7 +145,14 @@
     "exp_multiplier": 1.3,
     "name_prefix": "机关",
     "add_to_loot": [
-      { "item_id": "2009", "chance": 0.3, "quantity": [1, 2] }
+      {
+        "item_id": "2009",
+        "chance": 0.3,
+        "quantity": [
+          1,
+          2
+        ]
+      }
     ]
   },
   "元素·冰": {
@@ -99,7 +162,14 @@
     "name_prefix": "冰霜",
     "description_suffix": "（它周围的空气都凝结了！）",
     "add_to_loot": [
-      { "item_id": "2010", "chance": 0.2, "quantity": [1, 1] }
+      {
+        "item_id": "2010",
+        "chance": 0.2,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   },
   "妖精": {
@@ -109,7 +179,14 @@
     "exp_multiplier": 1.2,
     "description_suffix": "（它在林间飞舞，歌声带有魔力！）",
     "add_to_loot": [
-      { "item_id": "2011", "chance": 0.1, "quantity": [1, 1] }
+      {
+        "item_id": "2011",
+        "chance": 0.1,
+        "quantity": [
+          1,
+          1
+        ]
+      }
     ]
   }
 }
