@@ -1,5 +1,6 @@
 # handlers/combat_handler.py
 from astrbot.api.event import AstrMessageEvent
+from astrbot.core.message.components import At 
 from .. import data_manager, xiuxian_logic
 from ..config_manager import config
 from ..models import Player
@@ -15,20 +16,32 @@ class CombatHandler:
         if attacker.hp < attacker.max_hp:
             yield event.plain_result("你当前气血不满，无法与人切磋，请先恢复。")
             return
-        mentioned_user_id = event.get_at_list()[0] if event.get_at_list() else None
+
+        message_obj = event.message_obj
+        mentioned_user_id = None
+        if hasattr(message_obj, "message"):
+            for comp in message_obj.message:
+                if isinstance(comp, At):
+                    mentioned_user_id = comp.qq
+                    break
+        
         if not mentioned_user_id:
             yield event.plain_result(f"请指定切磋对象，例如：`{config.CMD_SPAR} @张三`")
             return
+            
         if str(mentioned_user_id) == attacker.user_id:
             yield event.plain_result("道友，不可与自己为敌。")
             return
+            
         defender = await data_manager.get_player_by_id(str(mentioned_user_id))
         if not defender:
             yield event.plain_result("对方尚未踏入仙途，无法应战。")
             return
+            
         if defender.hp < defender.max_hp:
             yield event.plain_result("对方气血不满，此时挑战非君子所为。")
             return
+            
         report = await xiuxian_logic.handle_pvp(attacker, defender)
         yield event.plain_result(report)
 
