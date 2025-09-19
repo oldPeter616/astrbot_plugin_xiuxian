@@ -7,8 +7,6 @@ from data.plugins.astrbot_plugin_xiuxian.data.migration import MigrationManager
 
 # --- 核心依赖 ---
 from .data.data_manager import DataBase
-from .core.combat_manager import BattleManager
-from .core.realm_manager import RealmManager
 from .config_manager import config
 
 
@@ -25,9 +23,10 @@ from .handlers import (
 
 @register("astrbot_plugin_xiuxian", "oldPeter616", "...", "...")
 class XiuXianPlugin(Star):
+    xiuxian_dataBase_version = 8
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.conf = config # astrbot_config, 备用
+        self.conf = config  # astrbot_config, 备用
 
     async def initialize(self):
         # --- 数据库 ---
@@ -35,12 +34,8 @@ class XiuXianPlugin(Star):
         await self.db.init()
 
         # --- 数据迁移 ---
-        self.migration_manager = MigrationManager(target_version=8)
+        self.migration_manager = MigrationManager(self.xiuxian_dataBase_version)
         await self.migration_manager.migrate(self.db._conn)
-
-        # --- 核心管理器 ---
-        self.battle_manager = BattleManager(self.db)
-        self.realm_manager = RealmManager(self.db)
 
         # --- 实例化所有 Handler ---
         self.misc_handler = MiscHandler(self.db)
