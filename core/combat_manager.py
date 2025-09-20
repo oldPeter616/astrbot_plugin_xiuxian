@@ -157,13 +157,11 @@ class BattleManager:
         active_boss_instances = await self.db.get_active_bosses()
         active_boss_map = {b.boss_id: b for b in active_boss_instances}
         all_boss_templates = config.boss_data
+        top_players = await self.db.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
         for boss_id, template in all_boss_templates.items():
             if boss_id not in active_boss_map:
                 logger.info(
                     f"世界Boss {template['name']} (ID: {boss_id}) 当前未激活，开始生成..."
-                )
-                top_players = await self.db.get_top_players(
-                    config.WORLD_BOSS_TOP_PLAYERS_AVG
                 )
                 avg_level_index = (
                     int(sum(p.level_index for p in top_players) / len(top_players))

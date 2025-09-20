@@ -97,10 +97,15 @@ class ShopHandler:
         )
 
         if success:
-            new_gold = player.gold - total_cost
-            yield event.plain_result(
-                f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {new_gold}。"
-            )
+            if updated_player:= await self.db.get_player_by_id(player.user_id):
+                yield event.plain_result(
+                    f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {updated_player.gold}。"
+                )
+            else:
+                # 极端情况下的回退
+                yield event.plain_result(
+                    f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。"
+                )
         else:
             if reason == "ERROR_INSUFFICIENT_FUNDS":
                 yield event.plain_result(

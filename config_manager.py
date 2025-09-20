@@ -64,8 +64,10 @@ class Config:
         self.BASE_EXP_PER_MINUTE = 10
         self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
         self.CREATE_SECT_COST = 5000
-        self.WORLD_BOSS_TEMPLATE_ID = "1"
         self.WORLD_BOSS_TOP_PLAYERS_AVG = 3
+        self.REALM_BASE_FLOORS = 3
+        self.REALM_FLOORS_PER_LEVEL_DIVISOR = 2
+        self.REALM_MONSTER_CHANCE = 0.7
 
         self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
 

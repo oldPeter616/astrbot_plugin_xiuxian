@@ -69,11 +69,7 @@ class SectHandler:
         leader_player = await self.db.get_player_by_id(sect_info["leader_id"])
         leader_info = "宗主: (信息丢失)"
 
-        if (
-            leader_player
-            and leader_player.user_id
-            and leader_player.sect_id == sect_info["id"]
-        ):
+        if leader_player and leader_player.sect_id == sect_info["id"]:
             leader_info = f"宗主: {leader_player.user_id[-4:]}"
 
         members = await self.db.get_sect_members(player.sect_id)

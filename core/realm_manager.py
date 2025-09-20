@@ -1,7 +1,7 @@
 # realm_manager.py
 import random
 import time
-from typing import Optional, Tuple, Dict,  List
+from typing import Optional, Tuple, Dict, List
 
 from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
 
@@ -20,7 +20,9 @@ class RealmGenerator:
         level_index = player.level_index
 
         # 1. 计算秘境层数
-        total_floors = 3 + (level_index // 2)
+        total_floors = config.REALM_BASE_FLOORS + (
+            level_index // config.REALM_FLOORS_PER_LEVEL_DIVISOR
+        )
 
         # 2. 从配置中获取可用的怪物和Boss列表
         monster_pool = list(config.monster_data.keys())
@@ -36,8 +38,7 @@ class RealmGenerator:
 
         # 3. 生成中间楼层的事件
         for _ in range(total_floors - 1):
-            # 70% 概率是怪物，30% 是宝藏
-            if random.random() < 0.7:
+            if random.random() < config.REALM_MONSTER_CHANCE:
                 monster_id = random.choice(monster_pool)
                 floor_events.append(FloorEvent(type="monster", data={"id": monster_id}))
             else:
