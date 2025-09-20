@@ -1,12 +1,13 @@
 # handlers/misc_handler.py
 from astrbot.api.event import AstrMessageEvent
+from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
 from ..config_manager import config
 
 __all__ = ["MiscHandler"]
 
 class MiscHandler:
-    def __init__(self, plugin):
-        self.plugin = plugin
+    def __init__(self, db: DataBase):
+        self.db = db
 
     async def handle_help(self, event: AstrMessageEvent):
         help_text = (

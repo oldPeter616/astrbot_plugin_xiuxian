@@ -1,0 +1,8 @@
+{
+    "notice": {
+        "description": "欢迎使用修仙插件",
+        "hint": "...",
+        "type": "string",
+        "default": "开始你的修仙之途吧！"
+    }
+}

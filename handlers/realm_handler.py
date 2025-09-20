@@ -1,33 +1,44 @@
 # handlers/realm_handler.py
 
 from astrbot.api.event import AstrMessageEvent
-from .. import data_manager
+from data.plugins.astrbot_plugin_xiuxian.core.realm_manager import RealmManager
+from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
+
 from ..config_manager import config
 from ..models import Player
 
 __all__ = ["RealmHandler"]
 
+
 class RealmHandler:
-    def __init__(self, plugin):
-        self.plugin = plugin
+    def __init__(self, db: DataBase):
+        self.db = db
+        self.realm_manager = RealmManager(db)
 
     async def handle_enter_realm(self, event: AstrMessageEvent, player: Player):
-        success, msg, updated_player = await self.plugin.realm_manager.start_session(player)
+        success, msg, updated_player = await self.realm_manager.start_session(player)
         if success:
-            await data_manager.update_player(updated_player)
+            await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
     async def handle_realm_advance(self, event: AstrMessageEvent, player: Player):
         if not player.realm_id:
             yield event.plain_result("你不在任何秘境中，无法前进。")
             return
-        
-        success, msg, updated_player, gained_items = await self.plugin.realm_manager.advance_session(player)
 
-        await data_manager.update_player(updated_player)
-        
+        (
+            success,
+            msg,
+            updated_player,
+            gained_items,
+        ) = await self.realm_manager.advance_session(player)
+
+        await self.db.update_player(updated_player)
+
         if gained_items:
-            await data_manager.add_items_to_inventory_in_transaction(updated_player.user_id, gained_items)
+            await self.db.add_items_to_inventory_in_transaction(
+                updated_player.user_id, gained_items
+            )
             item_log = []
             for item_id, qty in gained_items.items():
                 item = config.item_data.get(str(item_id))
@@ -49,8 +60,10 @@ class RealmHandler:
 
         player.realm_id = None
         player.realm_floor = 0
-        player.set_realm_instance(None) 
-        
-        await data_manager.update_player(player)
+        player.set_realm_instance(None)
 
-        yield event.plain_result(f"你已从【{realm_name}】中脱离，回到了大千世界。中途退出不会获得任何奖励。")
+        await self.db.update_player(player)
+
+        yield event.plain_result(
+            f"你已从【{realm_name}】中脱离，回到了大千世界。中途退出不会获得任何奖励。"
+        )
