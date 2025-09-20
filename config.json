@@ -3,14 +3,14 @@
         "CMD_BOSS_LIST": "查看世界boss",
         "CMD_FIGHT_BOSS": "讨伐boss",
         "CMD_START_XIUXIAN": "我要修仙",
-        "CMD_PLAYER_INFO": "我的信息",
+        "CMD_PLAYER_INFO": "状态",
         "CMD_CHECK_IN": "签到",
         "CMD_START_CULTIVATION": "闭关",
         "CMD_END_CULTIVATION": "出关",
         "CMD_BREAKTHROUGH": "突破",
         "CMD_SHOP": "商店",
         "CMD_BUY": "购买",
-        "CMD_BACKPACK": "我的背包",
+        "CMD_BACKPACK": "背包",
         "CMD_CREATE_SECT": "创建宗门",
         "CMD_JOIN_SECT": "加入宗门",
         "CMD_MY_SECT": "我的宗门",
@@ -20,7 +20,7 @@
         "CMD_ENTER_REALM": "探索秘境",
         "CMD_REALM_ADVANCE": "前进",
         "CMD_LEAVE_REALM": "离开秘境",
-        "CMD_HELP": "修仙帮助"
+        "CMD_HELP": "帮助"
     },
     "VALUES": {
         "INITIAL_GOLD": 100,
