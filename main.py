@@ -22,6 +22,7 @@ CMD_CHECK_IN = "签到"
 CMD_START_CULTIVATION = "闭关"
 CMD_END_CULTIVATION = "出关"
 CMD_BREAKTHROUGH = "突破"
+CMD_REROLL_SPIRIT_ROOT = "重入仙途"
 CMD_SHOP = "商店"
 CMD_BACKPACK = "我的背包"
 CMD_BUY = "购买"
@@ -102,6 +103,10 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_BREAKTHROUGH, "尝试突破当前境界")
     async def handle_breakthrough(self, event: AstrMessageEvent):
         async for r in self.player_handler.handle_breakthrough(event): yield r
+
+    @filter.command(CMD_REROLL_SPIRIT_ROOT, "花费灵石，重置灵根")
+    async def handle_reroll_spirit_root(self, event: AstrMessageEvent):
+        async for r in self.player_handler.handle_reroll_spirit_root(event): yield r
 
     # --- shop_handler ---
     @filter.command(CMD_SHOP, "查看坊市商品")

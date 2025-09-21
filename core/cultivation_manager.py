@@ -31,8 +31,13 @@ class CultivationManager:
         base_defense = 5 + level_index * 4
         return {"hp": base_hp, "max_hp": base_hp, "attack": base_attack, "defense": base_defense}
 
+    def _get_random_spiritual_root(self) -> str:
+        # 从配置的灵根类型中随机选择一个
+        possible_roots = self.config["RULES"].get("POSSIBLE_SPIRITUAL_ROOTS", ["金", "木", "水", "火", "土"])
+        return random.choice(possible_roots)
+
     def generate_new_player_stats(self, user_id: str) -> Player:
-        root = random.choice(list(self.root_to_config_key.keys()))
+        root = self._get_random_spiritual_root()
         initial_stats = self._calculate_base_stats(0)
         return Player(
             user_id=user_id,
@@ -88,12 +93,24 @@ class CultivationManager:
         exp_gained = int(duration_minutes * base_exp_per_min * speed_multiplier)
         p_clone.experience += exp_gained
 
-        speed_info = f"（灵根加成: {speed_multiplier:.2f}倍）" if speed_multiplier != 1.0 else ""
-        msg = (
-            f"道友本次闭关共持续 {int(duration_minutes)} 分钟，\n"
-            f"修为增加了 {exp_gained} 点！{speed_info}\n"
-            f"当前总修为：{p_clone.experience}"
-        )
+        # 计算回血
+        hp_recovery_ratio = self.config["VALUES"].get("CULTIVATION_HP_RECOVERY_RATIO", 0.0)
+        hp_recovered = int(exp_gained * hp_recovery_ratio)
+        hp_before = p_clone.hp
+        p_clone.hp = min(p_clone.max_hp, p_clone.hp + hp_recovered)
+        hp_actually_recovered = p_clone.hp - hp_before
+
+        speed_info = f"（灵根加成: {speed_multiplier:.2f}倍）"
+        msg_parts = [
+            f"道友本次闭关共持续 {int(duration_minutes)} 分钟,",
+            f"修为增加了 {exp_gained} 点！{speed_info}",
+        ]
+        if hp_actually_recovered > 0:
+            msg_parts.append(f"闭关吐纳间，气血恢复了 {hp_actually_recovered} 点。")
+        
+        msg_parts.append(f"当前总修为：{p_clone.experience}")
+        
+        msg = "\n".join(msg_parts)
         return True, msg, p_clone
 
     def handle_breakthrough(self, player: Player) -> Tuple[bool, str, Player]:
@@ -133,4 +150,21 @@ class CultivationManager:
                    f"境界稳固在【{p_clone.get_level(self.config_manager)}】，但修为空耗 {punishment} 点。\n"
                    f"剩余修为: {p_clone.experience}")
 
+        return True, msg, p_clone
+    
+    def handle_reroll_spirit_root(self, player: Player) -> Tuple[bool, str, Player]:
+        cost = self.config["VALUES"].get("REROLL_SPIRIT_ROOT_COST", 10000)
+        
+        if player.gold < cost:
+            return False, f"重入仙途乃逆天之举，需消耗 {cost} 灵石，道友的家底还不够。", player
+
+        p_clone = player.clone()
+        p_clone.gold -= cost
+        
+        old_root = p_clone.spiritual_root
+        new_root_name = self._get_random_spiritual_root()
+        p_clone.spiritual_root = f"{new_root_name}灵根"
+
+        msg = (f"道友耗费 {cost} 灵石逆天改命，原有的「{old_root}」已化为全新的「{p_clone.spiritual_root}」！\n"
+               f"祝道友仙途坦荡，大道可期！")
         return True, msg, p_clone

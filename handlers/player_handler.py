@@ -108,3 +108,13 @@ class PlayerHandler:
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
+        
+    async def handle_reroll_spirit_root(self, event: AstrMessageEvent):
+        player = await self._get_player_or_reply(event)
+        if not player:
+            return
+
+        success, msg, updated_player = self.cultivation_manager.handle_reroll_spirit_root(player)
+        if success and updated_player:
+            await self.db.update_player(updated_player)
+        yield event.plain_result(msg)

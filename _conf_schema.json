@@ -33,6 +33,18 @@
         "default": 10,
         "hint": "玩家在“闭关”状态下，每分钟获得的基础修为值。"
       },
+      "CULTIVATION_HP_RECOVERY_RATIO": {
+        "description": "闭关回血比例",
+        "type": "float",
+        "default": 0.1,
+        "hint": "闭关结束时，恢复的气血值 = 获得的修为 * 此比例。例如0.1代表恢复修为10%的血量。"
+      },
+      "REROLL_SPIRIT_ROOT_COST": {
+        "description": "重置灵根花费",
+        "type": "int",
+        "default": 10000,
+        "hint": "执行“重入仙途”指令，重新随机灵根需要消耗的灵石数量。"
+      },
       "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": {
         "description": "突破失败惩罚率",
         "type": "float",
