@@ -1,27 +1,55 @@
-
+# core/cultivation_manager.py
+import random
 import time
-from typing import Tuple
+from typing import Tuple, Dict
 
-from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
 from ..config_manager import config
 from ..models import Player
 
-
 class CultivationManager:
-    """闭关逻辑处理"""
-    def __init__(self, db: DataBase):
-        self.db = db
+    def _calculate_base_stats(self, level_index: int) -> Dict[str, int]:
+        """根据境界等级计算基础战斗属性"""
+        base_hp = 100 + level_index * 50
+        base_attack = 10 + level_index * 8
+        base_defense = 5 + level_index * 4
+        return {"hp": base_hp, "max_hp": base_hp, "attack": base_attack, "defense": base_defense}
+
+    def generate_new_player_stats(self, user_id: str) -> Player:
+        """为新玩家生成初始属性"""
+        root = random.choice(config.POSSIBLE_SPIRITUAL_ROOTS)
+        initial_stats = self._calculate_base_stats(0)
+        return Player(
+            user_id=user_id,
+            spiritual_root=f"{root}灵根",
+            gold=config.INITIAL_GOLD,
+            **initial_stats
+        )
+
+    def handle_check_in(self, player: Player) -> Tuple[bool, str, Player]:
+        """处理签到逻辑"""
+        now = time.time()
+        if now - player.last_check_in < 22 * 60 * 60:
+            return False, "道友，今日已经签到过了，请明日再来。", player
+
+        reward = random.randint(config.CHECK_IN_REWARD_MIN, config.CHECK_IN_REWARD_MAX)
+        p_clone = player.clone()
+        p_clone.gold += reward
+        p_clone.last_check_in = now
+
+        msg = f"签到成功！获得灵石 x{reward}。道友当前的家底为 {p_clone.gold} 灵石。"
+        return True, msg, p_clone
+
     def handle_start_cultivation(self, player: Player) -> Tuple[bool, str, Player]:
         """处理闭关逻辑"""
         if player.state != "空闲":
             return False, f"道友当前正在「{player.state}」中，无法分心闭关。", player
 
-        player.state = "修炼中"
-        player.state_start_time = time.time()
+        p_clone = player.clone()
+        p_clone.state = "修炼中"
+        p_clone.state_start_time = time.time()
 
         msg = "道友已进入冥想状态，开始闭关修炼。使用「出关」可查看修炼成果。"
-        return True, msg, player
-
+        return True, msg, p_clone
 
     def handle_end_cultivation(self, player: Player) -> Tuple[bool, str, Player]:
         """处理出关逻辑"""
@@ -31,20 +59,58 @@ class CultivationManager:
         now = time.time()
         duration_minutes = (now - player.state_start_time) / 60
 
+        p_clone = player.clone()
+        p_clone.state = "空闲"
+        p_clone.state_start_time = 0.0
+
         if duration_minutes < 1:
-            player.state = "空闲"
-            player.state_start_time = 0.0
             msg = "道友本次闭关不足一分钟，未能有所精进。下次要更有耐心才是。"
-            return True, msg, player
+            return True, msg, p_clone
 
         exp_gained = int(duration_minutes * config.BASE_EXP_PER_MINUTE)
-        player.experience += exp_gained
-        player.state = "空闲"
-        player.state_start_time = 0.0
+        p_clone.experience += exp_gained
 
         msg = (
             f"道友本次闭关共持续 {int(duration_minutes)} 分钟，\n"
             f"修为增加了 {exp_gained} 点！\n"
-            f"当前总修为：{player.experience}"
+            f"当前总修为：{p_clone.experience}"
         )
-        return True, msg, player
+        return True, msg, p_clone
+
+    def handle_breakthrough(self, player: Player) -> Tuple[bool, str, Player]:
+        """处理突破逻辑"""
+        current_level_index = player.level_index
+        p_clone = player.clone()
+
+        if current_level_index >= len(config.level_data) - 1:
+            return False, "道友已臻化境，达到当前世界的顶峰，无法再进行突破！", p_clone
+
+        next_level_info = config.level_data[current_level_index + 1]
+        exp_needed = next_level_info['exp_needed']
+        success_rate = next_level_info['success_rate']
+
+        if p_clone.experience < exp_needed:
+            msg = (f"突破失败！\n目标境界：{next_level_info['level_name']}\n"
+                   f"所需修为：{exp_needed} (当前拥有 {p_clone.experience})")
+            return False, msg, p_clone
+
+        if random.random() < success_rate:
+            p_clone.level_index = current_level_index + 1
+            p_clone.experience = 0
+
+            new_stats = self._calculate_base_stats(p_clone.level_index)
+            p_clone.hp = new_stats['hp']
+            p_clone.max_hp = new_stats['max_hp']
+            p_clone.attack = new_stats['attack']
+            p_clone.defense = new_stats['defense']
+
+            msg = (f"恭喜道友！天降祥瑞，突破成功！\n"
+                   f"当前境界已达：【{p_clone.level}】\n"
+                   f"生命值提升至 {p_clone.max_hp}，攻击提升至 {p_clone.attack}，防御提升至 {p_clone.defense}！")
+        else:
+            punishment = int(exp_needed * config.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO)
+            p_clone.experience -= punishment
+            msg = (f"可惜！道友在突破过程中气息不稳，导致失败。\n"
+                   f"境界稳固在【{p_clone.level}】，但修为空耗 {punishment} 点。")
+
+        return True, msg, p_clone

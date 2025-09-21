@@ -1,23 +1,17 @@
 # handlers/shop_handler.py
 from typing import Optional, Tuple
 from astrbot.api.event import AstrMessageEvent
-from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
+from ..data import DataBase
 from ..config_manager import config
 from ..models import Player, PlayerEffect
 
 __all__ = ["ShopHandler"]
 
-
-def calculate_item_effect(
-    item_id: str, quantity: int
-) -> Tuple[Optional[PlayerEffect], str]:
+def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerEffect], str]:
     """计算物品效果，返回效果对象和描述文本"""
     item_info = config.item_data.get(item_id)
     if not item_info or not (effect_config := item_info.effect):
-        return (
-            None,
-            f"【{item_info.name if item_info else '未知物品'}】似乎只是凡物，无法使用。",
-        )
+        return None, f"【{item_info.name if item_info else '未知物品'}】似乎只是凡物，无法使用。"
 
     effect = PlayerEffect()
     messages = []
@@ -35,18 +29,21 @@ def calculate_item_effect(
         effect.hp = value
         messages.append(f"恢复了 {value} 点生命")
     else:
-        return None, f"你研究了半天，也没能参透【{item_info.name}】的用法。"
+         return None, f"你研究了半天，也没能参透【{item_info.name}】的用法。"
 
-    full_message = (
-        f"你使用了 {quantity} 个【{item_info.name}】，" + "，".join(messages) + "！"
-    )
+    full_message = f"你使用了 {quantity} 个【{item_info.name}】，" + "，".join(messages) + "！"
     return effect, full_message
-
-
 
 class ShopHandler:
     def __init__(self, db: DataBase):
         self.db = db
+
+    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            return None
+        return player
 
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"
@@ -61,7 +58,11 @@ class ShopHandler:
         reply_msg += f"使用「{config.CMD_BUY} <物品名> [数量]」进行购买。"
         yield event.plain_result(reply_msg)
 
-    async def handle_backpack(self, event: AstrMessageEvent, player: Player):
+    async def handle_backpack(self, event: AstrMessageEvent):
+        player = await self._get_player_or_reply(event)
+        if not player:
+            return
+
         inventory = await self.db.get_inventory_by_user_id(player.user_id)
         if not inventory:
             yield event.plain_result("道友的背包空空如也。")
@@ -69,19 +70,17 @@ class ShopHandler:
 
         reply_msg = f"--- {event.get_sender_name()} 的背包 ---\n"
         for item in inventory:
-            reply_msg += (
-                f"【{item['name']}】x{item['quantity']} - {item['description']}\n"
-            )
+            reply_msg += f"【{item['name']}】x{item['quantity']} - {item['description']}\n"
         reply_msg += "--------------------------"
         yield event.plain_result(reply_msg)
 
-    async def handle_buy(
-        self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player
-    ):
+    async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int):
+        player = await self._get_player_or_reply(event)
+        if not player:
+            return
+
         if not item_name or quantity <= 0:
-            yield event.plain_result(
-                f"指令格式错误。正确用法: `{config.CMD_BUY} <物品名> [数量]`。"
-            )
+            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_BUY} <物品名> [数量]`。")
             return
 
         item_to_buy = config.get_item_by_name(item_name)
@@ -92,30 +91,27 @@ class ShopHandler:
         item_id_to_add, target_item_info = item_to_buy
         total_cost = target_item_info.price * quantity
 
-        success, reason = await self.db.transactional_buy_item(
-            player.user_id, item_id_to_add, quantity, total_cost
-        )
+        success, reason = await self.db.transactional_buy_item(player.user_id, item_id_to_add, quantity, total_cost)
 
         if success:
-            new_gold = player.gold - total_cost
-            yield event.plain_result(
-                f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {new_gold}。"
-            )
+            updated_player = await self.db.get_player_by_id(player.user_id)
+            if updated_player:
+                yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。剩余灵石 {updated_player.gold}。")
+            else:
+                yield event.plain_result(f"购买成功！花费{total_cost}灵石，购得「{item_name}」x{quantity}。")
         else:
             if reason == "ERROR_INSUFFICIENT_FUNDS":
-                yield event.plain_result(
-                    f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。"
-                )
+                yield event.plain_result(f"灵石不足！购买 {quantity}个「{item_name}」需{total_cost}灵石，你只有{player.gold}。")
             else:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
-    async def handle_use(
-        self, event: AstrMessageEvent, item_name: str, quantity: int, player: Player
-    ):
+    async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int):
+        player = await self._get_player_or_reply(event)
+        if not player:
+            return
+
         if not item_name or quantity <= 0:
-            yield event.plain_result(
-                f"指令格式错误。正确用法: `{config.CMD_USE_ITEM} <物品名> [数量]`。"
-            )
+            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_USE_ITEM} <物品名> [数量]`。")
             return
 
         item_to_use = config.get_item_by_name(item_name)
@@ -130,13 +126,9 @@ class ShopHandler:
             yield event.plain_result(msg)
             return
 
-        success = await self.db.transactional_apply_item_effect(
-            player.user_id, target_item_id, quantity, effect
-        )
+        success = await self.db.transactional_apply_item_effect(player.user_id, target_item_id, quantity, effect)
 
         if success:
             yield event.plain_result(msg)
         else:
-            yield event.plain_result(
-                f"使用失败！你的「{item_name}」数量不足 {quantity} 个，或发生了未知错误。"
-            )
+            yield event.plain_result(f"使用失败！你的「{item_name}」数量不足 {quantity} 个，或发生了未知错误。")

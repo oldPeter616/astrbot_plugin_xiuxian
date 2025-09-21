@@ -1,7 +1,7 @@
 # handlers/misc_handler.py
 from astrbot.api.event import AstrMessageEvent
-from data.plugins.astrbot_plugin_xiuxian.data.data_manager import DataBase
 from ..config_manager import config
+from ..data import DataBase
 
 __all__ = ["MiscHandler"]
 
