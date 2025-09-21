@@ -2,23 +2,23 @@
 
 from typing import Tuple, Optional
 
-from ..config_manager import config
+from astrbot.api import AstrBotConfig
 from ..models import Player
 from ..data import DataBase
 
 class SectManager:
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, config: AstrBotConfig):
         self.db = db
+        self.config = config
 
     async def handle_create_sect(self, player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
-        """处理创建宗门逻辑"""
         if player.sect_id is not None:
             return False, f"道友已是「{player.sect_name}」的成员，无法另立门户。", None
 
         if await self.db.get_sect_by_name(sect_name):
             return False, f"「{sect_name}」之名已响彻修仙界，请道友另择佳名。", None
 
-        cost = config.CREATE_SECT_COST
+        cost = self.config["VALUES"]["CREATE_SECT_COST"]
         if player.gold < cost:
             return False, f"开宗立派非同小可，需消耗 {cost} 灵石，道友的家底还不够。", None
 
@@ -32,7 +32,6 @@ class SectManager:
         return True, msg, p_clone
 
     async def handle_join_sect(self, player: Player, sect_name: str) -> Tuple[bool, str, Optional[Player]]:
-        """处理加入宗门逻辑"""
         if player.sect_id is not None:
             return False, f"道友已是「{player.sect_name}」的成员，不可三心二意。", None
 
@@ -48,7 +47,6 @@ class SectManager:
         return True, msg, p_clone
 
     async def handle_leave_sect(self, player: Player) -> Tuple[bool, str, Optional[Player]]:
-        """处理退出宗门逻辑"""
         if player.sect_id is None:
             return False, "道友本是逍遥散人，何谈退出宗门？", None
 

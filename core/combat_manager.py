@@ -4,17 +4,16 @@ import random
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
 from ..models import Player, Boss, ActiveWorldBoss, Monster
 from ..data import DataBase
-from ..config_manager import config
+from ..config_manager import ConfigManager
 
 class MonsterGenerator:
     """基于标签系统的怪物和Boss生成器"""
 
     @staticmethod
-    def _generate_rewards(base_loot: List, level: int) -> Dict[str, int]:
-        """根据掉落表生成具体奖励"""
+    def _generate_rewards(base_loot: List) -> Dict[str, int]:
         gained_items = {}
         for entry in base_loot:
             if random.random() < entry.get("chance", 0):
@@ -28,9 +27,8 @@ class MonsterGenerator:
         return gained_items
 
     @classmethod
-    def create_monster(cls, template_id: str, player_level_index: int) -> Optional[Monster]:
-        """根据模板ID和玩家等级创建怪物实例"""
-        template = config.monster_data.get(template_id)
+    def create_monster(cls, template_id: str, player_level_index: int, config_manager: ConfigManager) -> Optional[Monster]:
+        template = config_manager.monster_data.get(template_id)
         if not template:
             logger.warning(f"尝试创建怪物失败：找不到模板ID {template_id}")
             return None
@@ -50,7 +48,7 @@ class MonsterGenerator:
         combined_loot_table = []
 
         for tag_name in template.get("tags", []):
-            tag_effect = config.tag_data.get(tag_name)
+            tag_effect = config_manager.tag_data.get(tag_name)
             if not tag_effect:
                 continue
 
@@ -77,15 +75,14 @@ class MonsterGenerator:
             rewards={
                 "gold": int(final_gold),
                 "experience": int(final_exp),
-                "items": cls._generate_rewards(combined_loot_table, player_level_index)
+                "items": cls._generate_rewards(combined_loot_table)
             }
         )
         return instance
 
     @classmethod
-    def create_boss(cls, template_id: str, player_level_index: int) -> Optional[Boss]:
-        """根据模板ID和玩家等级创建Boss实例"""
-        template = config.boss_data.get(template_id)
+    def create_boss(cls, template_id: str, player_level_index: int, config_manager: ConfigManager) -> Optional[Boss]:
+        template = config_manager.boss_data.get(template_id)
         if not template:
             logger.warning(f"尝试创建Boss失败：找不到模板ID {template_id}")
             return None
@@ -105,7 +102,7 @@ class MonsterGenerator:
         combined_loot_table = []
 
         for tag_name in template.get("tags", []):
-            tag_effect = config.tag_data.get(tag_name, {})
+            tag_effect = config_manager.tag_data.get(tag_name, {})
             if "name_prefix" in tag_effect:
                 final_name = f"【{tag_effect['name_prefix']}】{final_name}"
             final_hp *= tag_effect.get("hp_multiplier", 1.0)
@@ -128,23 +125,25 @@ class MonsterGenerator:
             rewards={
                 "gold": int(final_gold),
                 "experience": int(final_exp),
-                "items": cls._generate_rewards(combined_loot_table, player_level_index)
+                "items": cls._generate_rewards(combined_loot_table)
             }
         )
         return instance
 
 class BattleManager:
-    """管理全局的世界Boss刷新与战斗"""
-
-    def __init__(self, db: DataBase):
+    """战斗管理器"""
+    
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
+        self.config = config
+        self.config_manager = config_manager
 
     async def ensure_bosses_are_spawned(self) -> List[Tuple[ActiveWorldBoss, Boss]]:
         active_boss_instances = await self.db.get_active_bosses()
         active_boss_map = {b.boss_id: b for b in active_boss_instances}
-        all_boss_templates = config.boss_data
+        all_boss_templates = self.config_manager.boss_data
 
-        top_players = await self.db.get_top_players(config.WORLD_BOSS_TOP_PLAYERS_AVG)
+        top_players = await self.db.get_top_players(self.config["VALUES"]["WORLD_BOSS_TOP_PLAYERS_AVG"])
 
         for boss_id, template in all_boss_templates.items():
             if boss_id not in active_boss_map:
@@ -152,7 +151,7 @@ class BattleManager:
 
                 avg_level_index = int(sum(p.level_index for p in top_players) / len(top_players)) if top_players else 1
 
-                boss_with_stats = MonsterGenerator.create_boss(boss_id, avg_level_index)
+                boss_with_stats = MonsterGenerator.create_boss(boss_id, avg_level_index, self.config_manager)
                 if not boss_with_stats:
                     logger.error(f"无法为Boss ID {boss_id} 生成属性，请检查配置。")
                     continue
@@ -169,18 +168,17 @@ class BattleManager:
 
         result = []
         for boss_id, active_instance in active_boss_map.items():
-            boss_template = MonsterGenerator.create_boss(boss_id, active_instance.level_index)
+            boss_template = MonsterGenerator.create_boss(boss_id, active_instance.level_index, self.config_manager)
             if boss_template:
                 result.append((active_instance, boss_template))
         return result
 
     async def player_fight_boss(self, player: Player, boss_id: str, player_name: str) -> str:
-        """处理玩家对世界Boss的自动战斗流程"""
         active_boss_instance = next((b for b in await self.db.get_active_bosses() if b.boss_id == boss_id), None)
         if not active_boss_instance or active_boss_instance.current_hp <= 0:
             return f"来晚了一步，ID为【{boss_id}】的Boss已被击败或已消失！"
 
-        boss = MonsterGenerator.create_boss(boss_id, active_boss_instance.level_index)
+        boss = MonsterGenerator.create_boss(boss_id, active_boss_instance.level_index, self.config_manager)
         if not boss:
             return "错误：无法加载Boss战斗数据！"
 
@@ -234,7 +232,6 @@ class BattleManager:
         return "\n".join(final_report)
 
     async def _end_battle(self, boss_template: Boss, boss_instance: ActiveWorldBoss) -> str:
-        """结算奖励并清理Boss"""
         participants = await self.db.get_boss_participants(boss_instance.boss_id)
         if not participants:
             await self.db.clear_boss_data(boss_instance.boss_id)
@@ -258,7 +255,6 @@ class BattleManager:
         return "\n".join(reward_report)
 
     def player_vs_monster(self, player: Player, monster) -> Tuple[bool, List[str], Player]:
-        """处理玩家 vs 怪物 的通用战斗逻辑"""
         p_clone = player.clone()
         monster_hp = monster.hp
 
@@ -297,7 +293,6 @@ class BattleManager:
         return victory, combat_summary, p_clone
 
     def player_vs_player(self, attacker: Player, defender: Player, attacker_name: Optional[str], defender_name: Optional[str]) -> Tuple[Optional[Player], Optional[Player], List[str]]:
-        """处理玩家 vs 玩家的战斗逻辑"""
         p1 = attacker.clone()
         p2 = defender.clone()
 

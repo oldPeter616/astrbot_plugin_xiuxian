@@ -2,14 +2,16 @@
 from typing import Optional, Tuple
 from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
-from ..config_manager import config
-from ..models import Player, PlayerEffect
+from ..config_manager import ConfigManager
+from ..models import Player, PlayerEffect, Item
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_BUY = "购买"
+CMD_USE_ITEM = "使用"
 
 __all__ = ["ShopHandler"]
 
-def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerEffect], str]:
-    """计算物品效果，返回效果对象和描述文本"""
-    item_info = config.item_data.get(item_id)
+def calculate_item_effect(item_info: Optional[Item], quantity: int) -> Tuple[Optional[PlayerEffect], str]:
     if not item_info or not (effect_config := item_info.effect):
         return None, f"【{item_info.name if item_info else '未知物品'}】似乎只是凡物，无法使用。"
 
@@ -35,27 +37,31 @@ def calculate_item_effect(item_id: str, quantity: int) -> Tuple[Optional[PlayerE
     return effect, full_message
 
 class ShopHandler:
-    def __init__(self, db: DataBase):
+    # 坊市相关指令处理器
+    
+    def __init__(self, db: DataBase, config_manager: ConfigManager):
         self.db = db
+        self.config_manager = config_manager
 
     async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return None
         return player
 
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"
-        sorted_items = sorted(config.item_data.values(), key=lambda item: item.price)
+        sorted_items = sorted(self.config_manager.item_data.values(), key=lambda item: item.price)
 
         if not sorted_items:
             reply_msg += "今日坊市暂无商品。\n"
         else:
             for info in sorted_items:
-                reply_msg += f"【{info.name}】售价：{info.price} 灵石\n"
+                if info.price > 0:
+                    reply_msg += f"【{info.name}】售价：{info.price} 灵石\n"
         reply_msg += "------------------\n"
-        reply_msg += f"使用「{config.CMD_BUY} <物品名> [数量]」进行购买。"
+        reply_msg += f"使用「{CMD_BUY} <物品名> [数量]」进行购买。"
         yield event.plain_result(reply_msg)
 
     async def handle_backpack(self, event: AstrMessageEvent):
@@ -63,7 +69,7 @@ class ShopHandler:
         if not player:
             return
 
-        inventory = await self.db.get_inventory_by_user_id(player.user_id)
+        inventory = await self.db.get_inventory_by_user_id(player.user_id, self.config_manager)
         if not inventory:
             yield event.plain_result("道友的背包空空如也。")
             return
@@ -80,11 +86,11 @@ class ShopHandler:
             return
 
         if not item_name or quantity <= 0:
-            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_BUY} <物品名> [数量]`。")
+            yield event.plain_result(f"指令格式错误。正确用法: `{CMD_BUY} <物品名> [数量]`。")
             return
 
-        item_to_buy = config.get_item_by_name(item_name)
-        if not item_to_buy:
+        item_to_buy = self.config_manager.get_item_by_name(item_name)
+        if not item_to_buy or item_to_buy[1].price <= 0:
             yield event.plain_result(f"道友，小店中并无「{item_name}」这件商品。")
             return
 
@@ -111,17 +117,17 @@ class ShopHandler:
             return
 
         if not item_name or quantity <= 0:
-            yield event.plain_result(f"指令格式错误。正确用法: `{config.CMD_USE_ITEM} <物品名> [数量]`。")
+            yield event.plain_result(f"指令格式错误。正确用法: `{CMD_USE_ITEM} <物品名> [数量]`。")
             return
 
-        item_to_use = config.get_item_by_name(item_name)
+        item_to_use = self.config_manager.get_item_by_name(item_name)
         if not item_to_use:
             yield event.plain_result(f"背包中似乎没有名为「{item_name}」的物品。")
             return
 
-        target_item_id, _ = item_to_use
+        target_item_id, target_item_info = item_to_use
 
-        effect, msg = calculate_item_effect(target_item_id, quantity)
+        effect, msg = calculate_item_effect(target_item_info, quantity)
         if not effect:
             yield event.plain_result(msg)
             return

@@ -1,22 +1,30 @@
 # handlers/realm_handler.py
 
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import RealmManager
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..models import Player
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_REALM_ADVANCE = "前进"
 
 __all__ = ["RealmHandler"]
 
 class RealmHandler:
-    def __init__(self, db: DataBase):
+    # 秘境相关指令处理器
+    
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
-        self.realm_manager = RealmManager(db)
+        self.config = config
+        self.config_manager = config_manager
+        self.realm_manager = RealmManager(db, config, config_manager)
 
     async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return None
         return player
 
@@ -25,8 +33,8 @@ class RealmHandler:
         if not player:
             return
 
-        success, msg, updated_player = await self.realm_manager.start_session(player)
-        if success:
+        success, msg, updated_player = await self.realm_manager.start_session(player, CMD_REALM_ADVANCE)
+        if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -47,7 +55,7 @@ class RealmHandler:
             await self.db.add_items_to_inventory_in_transaction(updated_player.user_id, gained_items)
             item_log = []
             for item_id, qty in gained_items.items():
-                item = config.item_data.get(str(item_id))
+                item = self.config_manager.item_data.get(str(item_id))
                 item_name = item.name if item else "未知物品"
                 item_log.append(f"【{item_name}】x{qty}")
             if item_log:
@@ -64,9 +72,8 @@ class RealmHandler:
             yield event.plain_result("你不在任何秘境中。")
             return
 
-        # 动态获取秘境名称
         realm_instance = player.get_realm_instance()
-        realm_name = f"{player.level}修士的试炼" if realm_instance else "未知的秘境"
+        realm_name = f"{player.get_level(self.config_manager)}修士的试炼" if realm_instance else "未知的秘境"
 
         player.realm_id = None
         player.realm_floor = 0

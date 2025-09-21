@@ -1,21 +1,30 @@
 # handlers/player_handler.py
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import CultivationManager
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..models import Player
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_PLAYER_INFO = "我的信息"
+CMD_CHECK_IN = "签到"
 
 __all__ = ["PlayerHandler"]
 
 class PlayerHandler:
-    def __init__(self, db: DataBase):
+    # 玩家相关指令处理器
+    
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
-        self.cultivation_manager = CultivationManager()
+        self.config = config
+        self.config_manager = config_manager
+        self.cultivation_manager = CultivationManager(config, config_manager)
 
     async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return None
         return player
 
@@ -31,7 +40,7 @@ class PlayerHandler:
             f"恭喜道友 {event.get_sender_name()} 踏上仙途！\n"
             f"初始灵根：【{new_player.spiritual_root}】\n"
             f"启动资金：【{new_player.gold}】灵石\n"
-            f"发送「{config.CMD_PLAYER_INFO}」查看状态，「{config.CMD_CHECK_IN}」领取福利！"
+            f"发送「{CMD_PLAYER_INFO}」查看状态，「{CMD_CHECK_IN}」领取福利！"
         )
         yield event.plain_result(reply_msg)
 
@@ -43,7 +52,7 @@ class PlayerHandler:
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
         reply_msg = (
             f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
-            f"境界：{player.level}\n"
+            f"境界：{player.get_level(self.config_manager)}\n"
             f"灵根：{player.spiritual_root}\n"
             f"修为：{player.experience}\n"
             f"灵石：{player.gold}\n"
@@ -63,7 +72,7 @@ class PlayerHandler:
             return
 
         success, msg, updated_player = self.cultivation_manager.handle_check_in(player)
-        if success:
+        if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -73,7 +82,7 @@ class PlayerHandler:
             return
 
         success, msg, updated_player = self.cultivation_manager.handle_start_cultivation(player)
-        if success:
+        if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -83,7 +92,7 @@ class PlayerHandler:
             return
 
         success, msg, updated_player = self.cultivation_manager.handle_end_cultivation(player)
-        if success:
+        if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
@@ -96,5 +105,6 @@ class PlayerHandler:
             yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")
             return
         success, msg, updated_player = self.cultivation_manager.handle_breakthrough(player)
-        await self.db.update_player(updated_player)
+        if success and updated_player:
+            await self.db.update_player(updated_player)
         yield event.plain_result(msg)

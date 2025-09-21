@@ -8,22 +8,23 @@ from dataclasses import fields
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..models import Player, PlayerEffect, ActiveWorldBoss
 
-DATA_DIR = StarTools.get_data_dir("xiuxian")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / config.DATABASE_FILE
-
 class DataBase:
-    def __init__(self):
+    """数据库管理器，封装所有数据库操作"""
+    
+    def __init__(self, db_file_name: str):
+        data_dir = StarTools.get_data_dir("xiuxian")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = data_dir / db_file_name
         self.conn: Optional[aiosqlite.Connection] = None
 
     async def connect(self):
         if self.conn is None:
-            self.conn = await aiosqlite.connect(DB_PATH)
+            self.conn = await aiosqlite.connect(self.db_path)
             self.conn.row_factory = aiosqlite.Row
-            logger.info(f"数据库连接已创建: {DB_PATH}")
+            logger.info(f"数据库连接已创建: {self.db_path}")
 
     async def close(self):
         if self.conn:
@@ -149,13 +150,13 @@ class DataBase:
         await self.conn.execute("UPDATE players SET sect_id = ?, sect_name = ? WHERE user_id = ?", (sect_id, sect_name, user_id))
         await self.conn.commit()
 
-    async def get_inventory_by_user_id(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_inventory_by_user_id(self, user_id: str, config_manager: ConfigManager) -> List[Dict[str, Any]]:
         async with self.conn.execute("SELECT item_id, quantity FROM inventory WHERE user_id = ?", (user_id,)) as cursor:
             rows = await cursor.fetchall()
             inventory_list = []
             for row in rows:
                 item_id, quantity = row['item_id'], row['quantity']
-                item_info = config.item_data.get(str(item_id))
+                item_info = config_manager.item_data.get(str(item_id))
                 if item_info:
                      inventory_list.append({
                         "item_id": item_id, "name": item_info.name,

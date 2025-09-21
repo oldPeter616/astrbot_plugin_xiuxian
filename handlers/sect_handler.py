@@ -1,21 +1,30 @@
 # handlers/sect_handler.py
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import SectManager
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..models import Player
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_CREATE_SECT = "创建宗门"
+CMD_JOIN_SECT = "加入宗门"
 
 __all__ = ["SectHandler"]
 
 class SectHandler:
-    def __init__(self, db: DataBase):
+    # 宗门相关指令处理器
+    
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
-        self.sect_manager = SectManager(db)
+        self.config = config
+        self.config_manager = config_manager
+        self.sect_manager = SectManager(db, config)
 
     async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return None
         return player
 
@@ -25,7 +34,7 @@ class SectHandler:
             return
 
         if not sect_name:
-            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_CREATE_SECT} <宗门名称>」。")
+            yield event.plain_result(f"指令格式错误！请使用「{CMD_CREATE_SECT} <宗门名称>」。")
             return
 
         success, msg, updated_player = await self.sect_manager.handle_create_sect(player, sect_name)
@@ -39,7 +48,7 @@ class SectHandler:
             return
 
         if not sect_name:
-            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_JOIN_SECT} <宗门名称>」。")
+            yield event.plain_result(f"指令格式错误！请使用「{CMD_JOIN_SECT} <宗门名称>」。")
             return
 
         success, msg, updated_player = await self.sect_manager.handle_join_sect(player, sect_name)
@@ -81,7 +90,7 @@ class SectHandler:
             leader_info = f"宗主: {leader_player.user_id[-4:]}"
 
         members = await self.db.get_sect_members(player.sect_id)
-        member_list = [f"{m.level}-{m.user_id[-4:]}" for m in members]
+        member_list = [f"{m.get_level(self.config_manager)}-{m.user_id[-4:]}" for m in members]
 
         reply_msg = (
             f"--- {sect_info['name']} (Lv.{sect_info['level']}) ---\n"

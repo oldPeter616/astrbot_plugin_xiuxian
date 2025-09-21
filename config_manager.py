@@ -7,11 +7,10 @@ from typing import Dict, Any, Tuple, Optional, List
 from astrbot.api import logger
 from .models import Item
 
-class Config:
+class ConfigManager:
     def __init__(self, base_dir: Path):
         self._base_dir = base_dir
         self._paths = {
-            "config": base_dir / "config" / "config.json",
             "level": base_dir / "config" / "level_config.json",
             "item": base_dir / "config" / "items.json",
             "boss": base_dir / "config" / "bosses.json",
@@ -32,49 +31,11 @@ class Config:
         self.realm_name_to_id: Dict[str, str] = {}
         self.boss_name_to_id: Dict[str, str] = {}
 
-        # --- 可配置属性 (带默认值) ---
-        self.CMD_BOSS_LIST = "查看世界boss"
-        self.CMD_FIGHT_BOSS = "讨伐boss"
-        self.CMD_START_XIUXIAN = "我要修仙"
-        self.CMD_PLAYER_INFO = "我的信息"
-        self.CMD_CHECK_IN = "签到"
-        self.CMD_START_CULTIVATION = "闭关"
-        self.CMD_END_CULTIVATION = "出关"
-        self.CMD_BREAKTHROUGH = "突破"
-        self.CMD_SHOP = "商店"
-        self.CMD_BUY = "购买"
-        self.CMD_BACKPACK = "我的背包"
-        self.CMD_CREATE_SECT = "创建宗门"
-        self.CMD_JOIN_SECT = "加入宗门"
-        self.CMD_MY_SECT = "我的宗门"
-        self.CMD_LEAVE_SECT = "退出宗门"
-        self.CMD_USE_ITEM = "使用"
-        self.CMD_SPAR = "切磋"
-        self.CMD_ENTER_REALM = "探索秘境"
-        self.CMD_REALM_ADVANCE = "前进"
-        self.CMD_LEAVE_REALM = "离开秘境"
-        self.CMD_HELP = "修仙帮助"
-
-        self.INITIAL_GOLD = 100
-        self.CHECK_IN_REWARD_MIN = 50
-        self.CHECK_IN_REWARD_MAX = 200
-        self.BASE_EXP_PER_MINUTE = 10
-        self.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO = 0.1
-        self.CREATE_SECT_COST = 5000
-        self.WORLD_BOSS_TOP_PLAYERS_AVG = 3
-        self.REALM_BASE_FLOORS = 3
-        self.REALM_FLOORS_PER_LEVEL_DIVISOR = 2
-        self.REALM_MONSTER_CHANCE = 0.7
-
-        self.POSSIBLE_SPIRITUAL_ROOTS: List[str] = ["金", "木", "水", "火", "土"]
-
-        self.DATABASE_FILE = "xiuxian_data.db"
-
         self._load_all()
 
     def _load_json_data(self, file_path: Path) -> Any:
         if not file_path.exists():
-            logger.warning(f"配置文件 {file_path} 不存在，将使用默认值。")
+            logger.warning(f"数据文件 {file_path} 不存在，将使用空数据。")
             return {} if file_path.suffix == '.json' else []
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -82,25 +43,11 @@ class Config:
                 logger.info(f"成功加载 {file_path.name} (共 {len(data)} 条数据)。")
                 return data
         except Exception as e:
-            logger.error(f"加载配置文件 {file_path} 失败: {e}")
+            logger.error(f"加载数据文件 {file_path} 失败: {e}")
             return {} if file_path.suffix == '.json' else []
 
     def _load_all(self):
-        """加载所有配置文件并进行后处理"""
-        if self._paths["config"].exists():
-            try:
-                with open(self._paths["config"], 'r', encoding='utf-8') as f:
-                    main_cfg = json.load(f)
-
-                for category_name, category_data in main_cfg.items():
-                    if isinstance(category_data, dict):
-                        for key, value in category_data.items():
-                            if hasattr(self, key):
-                                setattr(self, key, value)
-                logger.info("成功加载主配置文件 config.json。")
-            except Exception as e:
-                logger.error(f"加载主配置文件 config.json 失败: {e}")
-
+        """加载所有数据文件并进行后处理"""
         self.level_data = self._load_json_data(self._paths["level"])
         raw_item_data = self._load_json_data(self._paths["item"])
         self.boss_data = self._load_json_data(self._paths["boss"])
@@ -137,6 +84,3 @@ class Config:
     def get_boss_by_name(self, name: str) -> Optional[Tuple[str, dict]]:
         boss_id = self.boss_name_to_id.get(name)
         return (boss_id, self.boss_data[boss_id]) if boss_id else None
-
-_current_dir = Path(__file__).parent
-config = Config(_current_dir)

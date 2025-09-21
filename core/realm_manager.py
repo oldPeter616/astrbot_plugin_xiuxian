@@ -3,24 +3,24 @@ import random
 import time
 from typing import Tuple, Dict, Any, List, Optional
 
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
 from ..models import Player, FloorEvent, RealmInstance
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..data import DataBase
 from .combat_manager import BattleManager, MonsterGenerator
 
 class RealmGenerator:
-    """完全动态的秘境实例生成器"""
-
+    """秘境生成器"""
+    
     @staticmethod
-    def generate_for_player(player: Player) -> Optional[RealmInstance]:
-        """根据玩家的当前状态动态生成一个秘境实例"""
+    def generate_for_player(player: Player, config: AstrBotConfig, config_manager: ConfigManager) -> Optional[RealmInstance]:
         level_index = player.level_index
 
-        total_floors = config.REALM_BASE_FLOORS + (level_index // config.REALM_FLOORS_PER_LEVEL_DIVISOR)
+        total_floors = config["REALM_RULES"]["REALM_BASE_FLOORS"] + \
+                       (level_index // config["REALM_RULES"]["REALM_FLOORS_PER_LEVEL_DIVISOR"])
 
-        monster_pool = list(config.monster_data.keys())
-        boss_pool = list(config.boss_data.keys())
+        monster_pool = list(config_manager.monster_data.keys())
+        boss_pool = list(config_manager.boss_data.keys())
 
         if not monster_pool or not boss_pool:
             logger.error("秘境生成失败：怪物池或Boss池为空，请检查 monsters.json 和 bosses.json。")
@@ -29,7 +29,7 @@ class RealmGenerator:
         floor_events: List[FloorEvent] = []
 
         for _ in range(total_floors - 1):
-            if random.random() < config.REALM_MONSTER_CHANCE:
+            if random.random() < config["REALM_RULES"]["REALM_MONSTER_CHANCE"]:
                 monster_id = random.choice(monster_pool)
                 floor_events.append(FloorEvent(type="monster", data={"id": monster_id}))
             else:
@@ -48,26 +48,25 @@ class RealmGenerator:
         )
 
 class RealmManager:
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
-        # 创建一个 BattleManager 实例，专门用于调用 pve 战斗函数
-        self.battle_logic = BattleManager(db)
+        self.config = config
+        self.config_manager = config_manager
+        self.battle_logic = BattleManager(db, config, config_manager)
 
-    async def start_session(self, player: Player) -> Tuple[bool, str, Player]:
+    async def start_session(self, player: Player, cmd_realm_advance: str) -> Tuple[bool, str, Player]:
         p = player.clone()
         if p.realm_id is not None:
              current_realm_instance = p.get_realm_instance()
-             current_realm_name = f"{p.level}修士的试炼" if current_realm_instance else "未知的秘境"
+             current_realm_name = f"{p.get_level(self.config_manager)}修士的试炼" if current_realm_instance else "未知的秘境"
              return False, f"你已身在【{current_realm_name}】之中，无法分心他顾。", p
 
-        # 1. 计算进入消耗
         cost = 50 + (p.level_index * 25)
 
         if p.gold < cost:
             return False, f"本次历练需要 {cost} 灵石作为盘缠，你的灵石不足。", p
 
-        # 2. 调用生成器动态创建秘境
-        realm_instance = RealmGenerator.generate_for_player(p)
+        realm_instance = RealmGenerator.generate_for_player(p, self.config, self.config_manager)
         if not realm_instance:
              return False, "天机混乱，秘境生成失败，请稍后再试。", p
 
@@ -76,12 +75,11 @@ class RealmManager:
         p.realm_floor = 0
         p.set_realm_instance(realm_instance)
 
-        # 3. 动态命名
-        realm_name = f"{p.level}修士的试炼"
+        realm_name = f"{p.get_level(self.config_manager)}修士的试炼"
 
         msg = (f"你消耗了 {cost} 灵石，开启了一场与你修为匹配的试炼。\n"
                f"你进入了【{realm_name}】，此地共有 {realm_instance.total_floors} 层。\n"
-               f"使用「{config.CMD_REALM_ADVANCE}」指令向前探索。")
+               f"使用「{cmd_realm_advance}」指令向前探索。")
         return True, msg, p
 
     async def advance_session(self, player: Player) -> Tuple[bool, str, Player, Dict[str, int]]:
@@ -110,7 +108,7 @@ class RealmManager:
             victory, log, p_after_combat, gained_items = await self._handle_monster_event(p, event, p.level_index)
             p = p_after_combat
             event_log.extend(log)
-            if not victory: # 战斗失败或力竭
+            if not victory:
                 p.realm_id = None
                 p.realm_floor = 0
                 p.set_realm_instance(None)
@@ -121,9 +119,8 @@ class RealmManager:
         else:
             event_log.append("此地异常安静，你谨慎地探索着，未发生任何事。")
 
-        # 统一处理通关逻辑
         if victory and p.realm_id is not None and p.realm_floor >= realm_instance.total_floors:
-            realm_name = f"{p.level}修士的试炼"
+            realm_name = f"{p.get_level(self.config_manager)}修士的试炼"
             event_log.append(f"\n你成功探索完了【{realm_name}】的所有区域！")
             p.realm_id = None
             p.realm_floor = 0
@@ -133,13 +130,13 @@ class RealmManager:
 
     async def _handle_monster_event(self, p: Player, event: FloorEvent, player_level_index: int) -> Tuple[bool, List[str], Player, Dict[str, int]]:
         monster_template_id = event.data["id"]
+        
         enemy_generator = MonsterGenerator.create_boss if event.type == "boss" else MonsterGenerator.create_monster
-        enemy = enemy_generator(monster_template_id, player_level_index)
+        enemy = enemy_generator(monster_template_id, player_level_index, self.config_manager)
 
         if not enemy:
             return False, ["怪物生成失败！"], p, {}
 
-        # 使用 BattleManager 实例中的 pve 战斗逻辑
         victory, combat_log, p_after_combat = self.battle_logic.player_vs_monster(p, enemy)
 
         p = p_after_combat
@@ -150,7 +147,7 @@ class RealmManager:
             p.experience += int(rewards.get('experience', 0))
             gained_items = rewards.get('items', {})
 
-            if event.type == "boss": # 如果是 Boss 战胜利
+            if event.type == "boss":
                  combat_log.append(f"\n成功击败最终头目！")
 
         return victory, combat_log, p, gained_items

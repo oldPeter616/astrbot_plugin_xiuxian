@@ -3,35 +3,50 @@ import random
 import time
 from typing import Tuple, Dict
 
-from ..config_manager import config
+from astrbot.api import AstrBotConfig, logger
+from ..config_manager import ConfigManager
 from ..models import Player
 
 class CultivationManager:
+    def __init__(self, config: AstrBotConfig, config_manager: ConfigManager):
+        self.config = config
+        self.config_manager = config_manager
+        
+        # 灵根名称到配置项键的映射
+        self.root_to_config_key = {
+            "金": "WUXING_ROOT_SPEED",
+            "木": "WUXING_ROOT_SPEED",
+            "水": "WUXING_ROOT_SPEED",
+            "火": "WUXING_ROOT_SPEED",
+            "土": "WUXING_ROOT_SPEED",
+            "异": "VARIANT_ROOT_SPEED",
+            "天": "HEAVENLY_ROOT_SPEED",
+            "融合": "FUSION_ROOT_SPEED",
+            "混沌": "CHAOS_ROOT_SPEED"
+        }
+
     def _calculate_base_stats(self, level_index: int) -> Dict[str, int]:
-        """根据境界等级计算基础战斗属性"""
         base_hp = 100 + level_index * 50
         base_attack = 10 + level_index * 8
         base_defense = 5 + level_index * 4
         return {"hp": base_hp, "max_hp": base_hp, "attack": base_attack, "defense": base_defense}
 
     def generate_new_player_stats(self, user_id: str) -> Player:
-        """为新玩家生成初始属性"""
-        root = random.choice(config.POSSIBLE_SPIRITUAL_ROOTS)
+        root = random.choice(list(self.root_to_config_key.keys()))
         initial_stats = self._calculate_base_stats(0)
         return Player(
             user_id=user_id,
             spiritual_root=f"{root}灵根",
-            gold=config.INITIAL_GOLD,
+            gold=self.config["VALUES"]["INITIAL_GOLD"],
             **initial_stats
         )
 
     def handle_check_in(self, player: Player) -> Tuple[bool, str, Player]:
-        """处理签到逻辑"""
         now = time.time()
         if now - player.last_check_in < 22 * 60 * 60:
             return False, "道友，今日已经签到过了，请明日再来。", player
 
-        reward = random.randint(config.CHECK_IN_REWARD_MIN, config.CHECK_IN_REWARD_MAX)
+        reward = random.randint(self.config["VALUES"]["CHECK_IN_REWARD_MIN"], self.config["VALUES"]["CHECK_IN_REWARD_MAX"])
         p_clone = player.clone()
         p_clone.gold += reward
         p_clone.last_check_in = now
@@ -40,7 +55,6 @@ class CultivationManager:
         return True, msg, p_clone
 
     def handle_start_cultivation(self, player: Player) -> Tuple[bool, str, Player]:
-        """处理闭关逻辑"""
         if player.state != "空闲":
             return False, f"道友当前正在「{player.state}」中，无法分心闭关。", player
 
@@ -52,7 +66,6 @@ class CultivationManager:
         return True, msg, p_clone
 
     def handle_end_cultivation(self, player: Player) -> Tuple[bool, str, Player]:
-        """处理出关逻辑"""
         if player.state != "修炼中":
             return False, "道友尚未开始闭关，何谈出关？", player
 
@@ -67,25 +80,30 @@ class CultivationManager:
             msg = "道友本次闭关不足一分钟，未能有所精进。下次要更有耐心才是。"
             return True, msg, p_clone
 
-        exp_gained = int(duration_minutes * config.BASE_EXP_PER_MINUTE)
+        player_root_name = p_clone.spiritual_root.replace("灵根", "")
+        config_key = self.root_to_config_key.get(player_root_name, "WUXING_ROOT_SPEED")
+        speed_multiplier = self.config["SPIRIT_ROOT_SPEEDS"].get(config_key, 1.0)
+        
+        base_exp_per_min = self.config["VALUES"]["BASE_EXP_PER_MINUTE"]
+        exp_gained = int(duration_minutes * base_exp_per_min * speed_multiplier)
         p_clone.experience += exp_gained
 
+        speed_info = f"（灵根加成: {speed_multiplier:.2f}倍）" if speed_multiplier != 1.0 else ""
         msg = (
             f"道友本次闭关共持续 {int(duration_minutes)} 分钟，\n"
-            f"修为增加了 {exp_gained} 点！\n"
+            f"修为增加了 {exp_gained} 点！{speed_info}\n"
             f"当前总修为：{p_clone.experience}"
         )
         return True, msg, p_clone
 
     def handle_breakthrough(self, player: Player) -> Tuple[bool, str, Player]:
-        """处理突破逻辑"""
         current_level_index = player.level_index
         p_clone = player.clone()
 
-        if current_level_index >= len(config.level_data) - 1:
+        if current_level_index >= len(self.config_manager.level_data) - 1:
             return False, "道友已臻化境，达到当前世界的顶峰，无法再进行突破！", p_clone
 
-        next_level_info = config.level_data[current_level_index + 1]
+        next_level_info = self.config_manager.level_data[current_level_index + 1]
         exp_needed = next_level_info['exp_needed']
         success_rate = next_level_info['success_rate']
 
@@ -96,7 +114,7 @@ class CultivationManager:
 
         if random.random() < success_rate:
             p_clone.level_index = current_level_index + 1
-            p_clone.experience = 0
+            p_clone.experience -= exp_needed
 
             new_stats = self._calculate_base_stats(p_clone.level_index)
             p_clone.hp = new_stats['hp']
@@ -105,12 +123,14 @@ class CultivationManager:
             p_clone.defense = new_stats['defense']
 
             msg = (f"恭喜道友！天降祥瑞，突破成功！\n"
-                   f"当前境界已达：【{p_clone.level}】\n"
-                   f"生命值提升至 {p_clone.max_hp}，攻击提升至 {p_clone.attack}，防御提升至 {p_clone.defense}！")
+                   f"当前境界已达：【{p_clone.get_level(self.config_manager)}】\n"
+                   f"生命值提升至 {p_clone.max_hp}，攻击提升至 {p_clone.attack}，防御提升至 {p_clone.defense}！\n"
+                   f"剩余修为: {p_clone.experience}")
         else:
-            punishment = int(exp_needed * config.BREAKTHROUGH_FAIL_PUNISHMENT_RATIO)
+            punishment = int(exp_needed * self.config["VALUES"]["BREAKTHROUGH_FAIL_PUNISHMENT_RATIO"])
             p_clone.experience -= punishment
             msg = (f"可惜！道友在突破过程中气息不稳，导致失败。\n"
-                   f"境界稳固在【{p_clone.level}】，但修为空耗 {punishment} 点。")
+                   f"境界稳固在【{p_clone.get_level(self.config_manager)}】，但修为空耗 {punishment} 点。\n"
+                   f"剩余修为: {p_clone.experience}")
 
         return True, msg, p_clone

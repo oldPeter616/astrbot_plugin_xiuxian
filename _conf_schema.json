@@ -1,8 +1,122 @@
 {
-    "notice": {
-        "description": "欢迎使用修仙插件",
-        "hint": "...",
-        "type": "string",
-        "default": "开始你的修仙之途吧！"
+  "notice": {
+    "description": "欢迎语",
+    "type": "string",
+    "default": "开始你的修仙之途吧！",
+    "hint": "插件加载时显示的欢迎信息。"
+  },
+  "VALUES": {
+    "description": "核心数值配置",
+    "type": "object",
+    "items": {
+      "INITIAL_GOLD": {
+        "description": "初始灵石",
+        "type": "int",
+        "default": 100,
+        "hint": "新玩家创建角色时获得的初始灵石数量。"
+      },
+      "CHECK_IN_REWARD_MIN": {
+        "description": "签到最小奖励",
+        "type": "int",
+        "default": 50,
+        "hint": "每日签到可获得的最小灵石数量。"
+      },
+      "CHECK_IN_REWARD_MAX": {
+        "description": "签到最大奖励",
+        "type": "int",
+        "default": 200,
+        "hint": "每日签到可获得的最大灵石数量。"
+      },
+      "BASE_EXP_PER_MINUTE": {
+        "description": "每分钟闭关修为",
+        "type": "int",
+        "default": 10,
+        "hint": "玩家在“闭关”状态下，每分钟获得的基础修为值。"
+      },
+      "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": {
+        "description": "突破失败惩罚率",
+        "type": "float",
+        "default": 0.1,
+        "hint": "突破失败时，损失的修为占晋升所需修为的比例（0.1 = 10%）。"
+      },
+      "CREATE_SECT_COST": {
+        "description": "创建宗门花费",
+        "type": "int",
+        "default": 5000,
+        "hint": "创建宗门需要消耗的灵石数量。"
+      },
+      "WORLD_BOSS_TOP_PLAYERS_AVG": {
+        "description": "世界Boss等级参考人数",
+        "type": "int",
+        "default": 5,
+        "hint": "生成世界Boss时，参考服务器战力排名前N的玩家的平均等级。"
+      }
     }
+  },
+  "REALM_RULES": {
+    "description": "秘境生成规则",
+    "type": "object",
+    "items": {
+      "REALM_BASE_FLOORS": {
+        "description": "秘境基础层数",
+        "type": "int",
+        "default": 3
+      },
+      "REALM_FLOORS_PER_LEVEL_DIVISOR": {
+        "description": "境界等级影响层数的除数",
+        "type": "int",
+        "default": 2,
+        "hint": "每 N 个境界等级，秘境增加1层。例如，值为2时，每2级增加1层。"
+      },
+      "REALM_MONSTER_CHANCE": {
+        "description": "秘境遇怪概率",
+        "type": "float",
+        "default": 0.7,
+        "hint": "在秘境中遇到怪物事件的概率（0.0到1.0之间）。"
+      }
+    }
+  },
+  "SPIRIT_ROOT_SPEEDS": {
+    "description": "灵根修炼速度倍率",
+    "type": "object",
+    "items": {
+      "WUXING_ROOT_SPEED": {
+        "description": "五行灵根",
+        "type": "float",
+        "default": 1.0
+      },
+      "VARIANT_ROOT_SPEED": {
+        "description": "变异灵根",
+        "type": "float",
+        "default": 1.2
+      },
+      "HEAVENLY_ROOT_SPEED": {
+        "description": "天灵根",
+        "type": "float",
+        "default": 1.5
+      },
+      "FUSION_ROOT_SPEED": {
+        "description": "融合灵根",
+        "type": "float",
+        "default": 1.8
+      },
+      "CHAOS_ROOT_SPEED": {
+        "description": "混沌灵根",
+        "type": "float",
+        "default": 2.0
+      }
+    }
+  },
+  "FILES": {
+    "description": "文件路径配置",
+    "type": "object",
+    "items": {
+      "DATABASE_FILE": {
+        "description": "数据库文件名",
+        "type": "string",
+        "default": "xiuxian_data.db",
+        "hint": "存储玩家数据的SQLite数据库文件名。"
+      }
+    }
+  }
 }

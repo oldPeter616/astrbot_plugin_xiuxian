@@ -1,23 +1,32 @@
 # handlers/combat_handler.py
 
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api import AstrBotConfig
 from astrbot.core.message.components import At
 from ..data import DataBase
 from ..core import BattleManager
-from ..config_manager import config
+from ..config_manager import ConfigManager
 from ..models import Player
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_SPAR = "切磋"
+CMD_FIGHT_BOSS = "讨伐boss"
 
 __all__ = ["CombatHandler"]
 
 class CombatHandler:
-    def __init__(self, db: DataBase):
+    # 战斗相关指令处理器
+    
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
-        self.battle_manager = BattleManager(db)
+        self.config = config
+        self.config_manager = config_manager
+        self.battle_manager = BattleManager(db, config, config_manager)
 
     async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{config.CMD_START_XIUXIAN}」开启你的旅程。")
+            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return None
         return player
 
@@ -43,7 +52,7 @@ class CombatHandler:
                     break
 
         if not mentioned_user_id:
-            yield event.plain_result(f"请指定切磋对象，例如：`{config.CMD_SPAR} @张三`")
+            yield event.plain_result(f"请指定切磋对象，例如：`{CMD_SPAR} @张三`")
             return
 
         if str(mentioned_user_id) == attacker.user_id:
@@ -65,7 +74,6 @@ class CombatHandler:
         yield event.plain_result("\n".join(report_lines))
 
     async def handle_boss_list(self, event: AstrMessageEvent):
-        """处理查看世界Boss列表的指令"""
         active_bosses_with_templates = await self.battle_manager.ensure_bosses_are_spawned()
 
         if not active_bosses_with_templates:
@@ -84,17 +92,16 @@ class CombatHandler:
                 for p_data in participants[:3]:
                     report.append(f"    - {p_data['user_name']}: {p_data['total_damage']} 伤害")
 
-        report.append(f"\n使用「{config.CMD_FIGHT_BOSS} <Boss ID>」发起挑战！")
+        report.append(f"\n使用「{CMD_FIGHT_BOSS} <Boss ID>」发起挑战！")
         yield event.plain_result("\n".join(report))
 
     async def handle_fight_boss(self, event: AstrMessageEvent, boss_id: str):
-        """处理讨伐世界Boss的指令"""
         player = await self._get_player_or_reply(event)
         if not player:
             return
 
         if not boss_id:
-            yield event.plain_result(f"指令格式错误！请使用「{config.CMD_FIGHT_BOSS} <Boss ID>」。")
+            yield event.plain_result(f"指令格式错误！请使用「{CMD_FIGHT_BOSS} <Boss ID>」。")
             return
 
         player_name = event.get_sender_name()
