@@ -4,8 +4,8 @@ from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
 from ..config_manager import ConfigManager
 from ..models import Player, PlayerEffect, Item
+from .utils import player_required
 
-CMD_START_XIUXIAN = "我要修仙"
 CMD_BUY = "购买"
 CMD_USE_ITEM = "使用"
 
@@ -43,13 +43,6 @@ class ShopHandler:
         self.db = db
         self.config_manager = config_manager
 
-    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
-        player = await self.db.get_player_by_id(event.get_sender_id())
-        if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
-            return None
-        return player
-
     async def handle_shop(self, event: AstrMessageEvent):
         reply_msg = "--- 仙途坊市 ---\n"
         sorted_items = sorted(self.config_manager.item_data.values(), key=lambda item: item.price)
@@ -64,11 +57,8 @@ class ShopHandler:
         reply_msg += f"使用「{CMD_BUY} <物品名> [数量]」进行购买。"
         yield event.plain_result(reply_msg)
 
-    async def handle_backpack(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_backpack(self, player: Player, event: AstrMessageEvent):
         inventory = await self.db.get_inventory_by_user_id(player.user_id, self.config_manager)
         if not inventory:
             yield event.plain_result("道友的背包空空如也。")
@@ -80,11 +70,8 @@ class ShopHandler:
         reply_msg += "--------------------------"
         yield event.plain_result(reply_msg)
 
-    async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_buy(self, player: Player, event: AstrMessageEvent, item_name: str, quantity: int):
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{CMD_BUY} <物品名> [数量]`。")
             return
@@ -111,11 +98,8 @@ class ShopHandler:
             else:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
-    async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_use(self, player: Player, event: AstrMessageEvent, item_name: str, quantity: int):
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{CMD_USE_ITEM} <物品名> [数量]`。")
             return

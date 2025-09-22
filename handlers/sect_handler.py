@@ -5,8 +5,8 @@ from ..data import DataBase
 from ..core import SectManager
 from ..config_manager import ConfigManager
 from ..models import Player
+from .utils import player_required
 
-CMD_START_XIUXIAN = "我要修仙"
 CMD_CREATE_SECT = "创建宗门"
 CMD_JOIN_SECT = "加入宗门"
 
@@ -21,18 +21,8 @@ class SectHandler:
         self.config_manager = config_manager
         self.sect_manager = SectManager(db, config)
 
-    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
-        player = await self.db.get_player_by_id(event.get_sender_id())
-        if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
-            return None
-        return player
-
-    async def handle_create_sect(self, event: AstrMessageEvent, sect_name: str):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_create_sect(self, player: Player, event: AstrMessageEvent, sect_name: str):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_CREATE_SECT} <宗门名称>」。")
             return
@@ -42,11 +32,8 @@ class SectHandler:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_join_sect(self, event: AstrMessageEvent, sect_name: str):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_join_sect(self, player: Player, event: AstrMessageEvent, sect_name: str):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_JOIN_SECT} <宗门名称>」。")
             return
@@ -56,21 +43,15 @@ class SectHandler:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_leave_sect(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_leave_sect(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = await self.sect_manager.handle_leave_sect(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_my_sect(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_my_sect(self, player: Player, event: AstrMessageEvent):
         if not player.sect_id:
             yield event.plain_result("道友乃逍遥散人，尚未加入任何宗门。")
             return

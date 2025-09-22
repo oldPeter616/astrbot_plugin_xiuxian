@@ -1,13 +1,12 @@
 # handlers/realm_handler.py
-
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import RealmManager
 from ..config_manager import ConfigManager
 from ..models import Player
+from .utils import player_required
 
-CMD_START_XIUXIAN = "我要修仙"
 CMD_REALM_ADVANCE = "前进"
 
 __all__ = ["RealmHandler"]
@@ -21,28 +20,15 @@ class RealmHandler:
         self.config_manager = config_manager
         self.realm_manager = RealmManager(db, config, config_manager)
 
-    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
-        player = await self.db.get_player_by_id(event.get_sender_id())
-        if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
-            return None
-        return player
-
-    async def handle_enter_realm(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_enter_realm(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = await self.realm_manager.start_session(player, CMD_REALM_ADVANCE)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_realm_advance(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_realm_advance(self, player: Player, event: AstrMessageEvent):
         if not player.realm_id:
             yield event.plain_result("你不在任何秘境中，无法前进。")
             return
@@ -63,11 +49,8 @@ class RealmHandler:
 
         yield event.plain_result(msg)
 
-    async def handle_leave_realm(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_leave_realm(self, player: Player, event: AstrMessageEvent):
         if not player.realm_id:
             yield event.plain_result("你不在任何秘境中。")
             return

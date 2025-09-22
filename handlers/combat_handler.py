@@ -1,5 +1,4 @@
 # handlers/combat_handler.py
-
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from astrbot.core.message.components import At
@@ -7,8 +6,8 @@ from ..data import DataBase
 from ..core import BattleManager
 from ..config_manager import ConfigManager
 from ..models import Player
+from .utils import player_required
 
-CMD_START_XIUXIAN = "我要修仙"
 CMD_SPAR = "切磋"
 CMD_FIGHT_BOSS = "讨伐boss"
 
@@ -23,18 +22,8 @@ class CombatHandler:
         self.config_manager = config_manager
         self.battle_manager = BattleManager(db, config, config_manager)
 
-    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
-        player = await self.db.get_player_by_id(event.get_sender_id())
-        if not player:
-            await event.reply(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
-            return None
-        return player
-
-    async def handle_spar(self, event: AstrMessageEvent):
-        attacker = await self._get_player_or_reply(event)
-        if not attacker:
-            return
-
+    @player_required
+    async def handle_spar(self, attacker: Player, event: AstrMessageEvent):
         if attacker.hp < attacker.max_hp:
             yield event.plain_result("你当前气血不满，无法与人切磋，请先恢复。")
             return
@@ -95,11 +84,8 @@ class CombatHandler:
         report.append(f"\n使用「{CMD_FIGHT_BOSS} <Boss ID>」发起挑战！")
         yield event.plain_result("\n".join(report))
 
-    async def handle_fight_boss(self, event: AstrMessageEvent, boss_id: str):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_fight_boss(self, player: Player, event: AstrMessageEvent, boss_id: str):
         if not boss_id:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_FIGHT_BOSS} <Boss ID>」。")
             return

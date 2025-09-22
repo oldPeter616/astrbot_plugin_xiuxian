@@ -3,8 +3,9 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import CultivationManager
-from ..config_manager import ConfigManager
 from ..models import Player
+from ..config_manager import ConfigManager
+from .utils import player_required
 
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
@@ -20,13 +21,6 @@ class PlayerHandler:
         self.config = config
         self.config_manager = config_manager
         self.cultivation_manager = CultivationManager(config, config_manager)
-
-    async def _get_player_or_reply(self, event: AstrMessageEvent) -> Player | None:
-        player = await self.db.get_player_by_id(event.get_sender_id())
-        if not player:
-            yield event.plain_result(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
-            return 
-        return player
 
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
         user_id = event.get_sender_id()
@@ -44,11 +38,8 @@ class PlayerHandler:
         )
         yield event.plain_result(reply_msg)
 
-    async def handle_player_info(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_player_info(self, player: Player, event: AstrMessageEvent):
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
         reply_msg = (
             f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
@@ -66,41 +57,29 @@ class PlayerHandler:
         )
         yield event.plain_result(reply_msg)
 
-    async def handle_check_in(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_check_in(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_check_in(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_start_cultivation(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_start_cultivation(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_start_cultivation(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_end_cultivation(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_end_cultivation(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_end_cultivation(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
 
-    async def handle_breakthrough(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_breakthrough(self, player: Player, event: AstrMessageEvent):
         if player.state != "空闲":
             yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")
             return
@@ -109,11 +88,8 @@ class PlayerHandler:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
         
-    async def handle_reroll_spirit_root(self, event: AstrMessageEvent):
-        player = await self._get_player_or_reply(event)
-        if not player:
-            return
-
+    @player_required
+    async def handle_reroll_spirit_root(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_reroll_spirit_root(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
