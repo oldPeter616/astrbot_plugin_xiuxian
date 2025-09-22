@@ -4,7 +4,6 @@ from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
 from ..config_manager import ConfigManager
 from ..models import Player, PlayerEffect, Item
-from .utils import player_required
 from .utils import player_required, require_idle_state
 
 CMD_BUY = "购买"
