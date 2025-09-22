@@ -39,6 +39,7 @@ class Player:
     """玩家数据模型"""
 
     user_id: str
+    name: str
     level_index: int = 0
     spiritual_root: str = "未知"
     experience: int = 0
