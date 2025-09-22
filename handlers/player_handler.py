@@ -6,6 +6,7 @@ from ..core import CultivationManager
 from ..models import Player
 from ..config_manager import ConfigManager
 from .utils import player_required
+from .utils import player_required, require_idle_state 
 
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
@@ -85,6 +86,7 @@ class PlayerHandler:
         yield event.plain_result(reply_msg)
 
     @player_required
+    @require_idle_state 
     async def handle_check_in(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_check_in(player)
         if success and updated_player:
@@ -93,10 +95,12 @@ class PlayerHandler:
 
     @player_required
     async def handle_start_cultivation(self, player: Player, event: AstrMessageEvent):
+        # start_cultivation 自己就有状态检查，无需添加
         success, msg, updated_player = self.cultivation_manager.handle_start_cultivation(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
+
 
     @player_required
     async def handle_end_cultivation(self, player: Player, event: AstrMessageEvent):
@@ -106,16 +110,15 @@ class PlayerHandler:
         yield event.plain_result(msg)
 
     @player_required
+    @require_idle_state
     async def handle_breakthrough(self, player: Player, event: AstrMessageEvent):
-        if player.state != "空闲":
-            yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")
-            return
         success, msg, updated_player = self.cultivation_manager.handle_breakthrough(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
         
     @player_required
+    @require_idle_state
     async def handle_reroll_spirit_root(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_reroll_spirit_root(player)
         if success and updated_player:
@@ -123,6 +126,7 @@ class PlayerHandler:
         yield event.plain_result(msg)
         
     @player_required
+    @require_idle_state
     async def handle_change_name(self, player: Player, event: AstrMessageEvent, new_name: str):
         if not new_name:
             yield event.plain_result("道号不可为空，请重新输入。")
