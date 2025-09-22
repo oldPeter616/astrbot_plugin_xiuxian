@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 8
+LATEST_DB_VERSION = 9
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -168,7 +168,7 @@ async def _upgrade_v4_to_v5(conn: aiosqlite.Connection, config_manager: ConfigMa
                 )
             """)
             return
-
+    
     await conn.execute("ALTER TABLE players RENAME TO players_old_v4")
     await conn.execute("""
         CREATE TABLE players (
@@ -265,3 +265,34 @@ async def _upgrade_v7_to_v8(conn: aiosqlite.Connection, config_manager: ConfigMa
         )
     """)
     logger.info("v7 -> v8 数据库迁移完成！")
+
+
+@migration(9)
+async def _upgrade_v8_to_v9(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    logger.info("开始执行 v8 -> v9 数据库迁移...")
+    cursor = await conn.execute("PRAGMA table_info(players)")
+    columns = [row['name'] for row in await cursor.fetchall()]
+    
+    # 使用字典来定义所有需要添加的列和它们的默认值
+    columns_to_add = {
+        'mp': "INTEGER NOT NULL DEFAULT 50",
+        'max_mp': "INTEGER NOT NULL DEFAULT 50",
+        'speed': "INTEGER NOT NULL DEFAULT 5",
+        'aptitude': "INTEGER NOT NULL DEFAULT 10",
+        'insight': "INTEGER NOT NULL DEFAULT 10",
+        'luck': "INTEGER NOT NULL DEFAULT 5",
+        'divine_sense': "INTEGER NOT NULL DEFAULT 20",
+        'crit_rate': "REAL NOT NULL DEFAULT 0.05",
+        'crit_damage': "REAL NOT NULL DEFAULT 1.5",
+        'weapon_id': "TEXT",
+        'armor_id': "TEXT",
+        'accessory_id': "TEXT",
+        'magic_tool_id': "TEXT"
+    }
+
+    for col, definition in columns_to_add.items():
+        if col not in columns:
+            await conn.execute(f"ALTER TABLE players ADD COLUMN {col} {definition}")
+            logger.info(f"成功为 'players' 表添加新列: {col}")
+            
+    logger.info("v8 -> v9 数据库迁移完成！")
