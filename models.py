@@ -48,10 +48,33 @@ class Player:
     state_start_time: float = 0.0
     sect_id: Optional[int] = None
     sect_name: Optional[str] = None
+
+    # --- 基础战斗属性 ---
     hp: int = 100
     max_hp: int = 100
+    mp: int = 50           # 新增：灵力/法力值
+    max_mp: int = 50       # 新增：最大灵力/法力值
     attack: int = 10
     defense: int = 5
+    speed: int = 5         # 新增：速度
+
+    # --- 天赋属性 ---
+    aptitude: int = 10      # 新增：根骨
+    insight: int = 10       # 新增：悟性
+    luck: int = 5           # 新增：气运/机缘
+    divine_sense: int = 20  # 新增：神识
+
+    # --- 高级战斗属性 ---
+    crit_rate: float = 0.05       # 新增：暴击率 (初始5%)
+    crit_damage: float = 1.5      # 新增：暴击伤害 (初始150%)
+
+    # --- 装备栏 ---
+    weapon_id: Optional[str] = None     # 新增：武器ID
+    armor_id: Optional[str] = None      # 新增：防具ID
+    accessory_id: Optional[str] = None  # 新增：饰品ID
+    magic_tool_id: Optional[str] = None # 新增：法宝ID
+
+    # --- 秘境相关 ---
     realm_id: Optional[str] = None
     realm_floor: int = 0
     realm_data: Optional[str] = None
