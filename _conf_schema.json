@@ -62,6 +62,12 @@
         "type": "int",
         "default": 5,
         "hint": "生成世界Boss时，参考服务器战力排名前N的玩家的平均等级。"
+      },
+      "CHANGE_NAME_COST": {
+        "description": "更改道号花费",
+        "type": "int",
+        "default": 1000,
+        "hint": "执行“更改道号”指令需要消耗的灵石数量。"
       }
     }
   },
