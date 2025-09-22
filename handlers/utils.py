@@ -28,3 +28,20 @@ def player_required(func: Callable[..., Coroutine[any, any, AsyncGenerator[any, 
             yield result
             
     return wrapper
+
+def require_idle_state(func: Callable[..., Coroutine[any, any, AsyncGenerator[any, None]]]):
+    """
+    一个装饰器，用于限制玩家必须在“空闲”状态下才能执行的指令。
+    它必须用在 @player_required 之后。
+    """
+    @wraps(func)
+    async def wrapper(self, player: Player, event: AstrMessageEvent, *args, **kwargs):
+        if player.state != "空闲":
+            yield event.plain_result(f"道友当前正在「{player.state}」中，无法分心他顾。")
+            return
+        
+        # 玩家状态正确，继续执行原指令
+        async for result in func(self, player, event, *args, **kwargs):
+            yield result
+
+    return wrapper
