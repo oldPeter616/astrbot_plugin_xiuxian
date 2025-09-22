@@ -5,8 +5,7 @@ from ..data import DataBase
 from ..core import CultivationManager
 from ..models import Player
 from ..config_manager import ConfigManager
-from .utils import player_required
-from .utils import player_required, require_idle_state 
+from .utils import player_required, require_idle_state
 
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
@@ -17,7 +16,7 @@ __all__ = ["PlayerHandler"]
 
 class PlayerHandler:
     # 玩家相关指令处理器
-    
+
     def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
         self.config = config
@@ -86,7 +85,7 @@ class PlayerHandler:
         yield event.plain_result(reply_msg)
 
     @player_required
-    @require_idle_state 
+    @require_idle_state
     async def handle_check_in(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_check_in(player)
         if success and updated_player:
@@ -100,7 +99,6 @@ class PlayerHandler:
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
-
 
     @player_required
     async def handle_end_cultivation(self, player: Player, event: AstrMessageEvent):
