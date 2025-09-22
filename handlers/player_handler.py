@@ -28,11 +28,13 @@ class PlayerHandler:
         if await self.db.get_player_by_id(user_id):
             yield event.plain_result("道友，你已踏入仙途，无需重复此举。")
             return
-
-        new_player = self.cultivation_manager.generate_new_player_stats(user_id)
+        sender_name = event.get_sender_name()
+        # <-- 将 sender_name 传递给 generate_new_player_stats
+        new_player = self.cultivation_manager.generate_new_player_stats(user_id, sender_name)
         await self.db.create_player(new_player)
         reply_msg = (
             f"恭喜道友 {event.get_sender_name()} 踏上仙途！\n"
+            f"你的初始道号为【{new_player.name}】\n"
             f"初始灵根：【{new_player.spiritual_root}】\n"
             f"启动资金：【{new_player.gold}】灵石\n"
             f"发送「{CMD_PLAYER_INFO}」查看状态，「{CMD_CHECK_IN}」领取福利！"
@@ -56,7 +58,7 @@ class PlayerHandler:
 
 
         reply_msg = (
-            f"【{event.get_sender_name()}的修行状态】\n"
+            f"【{player.name}的修行状态】\n"
             f"境界：{player.get_level(self.config_manager)} ({player.level_index}级)\n"
             f"灵根：{player.spiritual_root}\n"
             f"灵石：{player.gold} 枚\n\n"
@@ -119,3 +121,23 @@ class PlayerHandler:
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
+    @player_required
+    async def handle_change_name(self, player: Player, event: AstrMessageEvent, new_name: str):
+        if not new_name:
+            yield event.plain_result("道号不可为空，请重新输入。")
+            return
+        
+        cost = self.config["VALUES"].get("CHANGE_NAME_COST", 1000)
+        
+        if player.gold < cost:
+            yield event.plain_result(f"更改道号需花费 {cost} 灵石，你的家底还不够。")
+            return
+            
+        p_clone = player.clone()
+        old_name = p_clone.name
+        p_clone.gold -= cost
+        p_clone.name = new_name
+        
+        await self.db.update_player(p_clone)
+        
+        yield event.plain_result(f"道号已成功从【{old_name}】更改为【{new_name}】，花费了 {cost} 灵石。")
