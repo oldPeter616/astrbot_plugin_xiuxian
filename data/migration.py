@@ -5,8 +5,8 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-# 将最新版本号更新为 9
-LATEST_DB_VERSION = 9
+
+LATEST_DB_VERSION = 10
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -18,9 +18,9 @@ def migration(version: int):
         return func
     return decorator
 
-async def _create_all_tables_v9(conn: aiosqlite.Connection):
+async def _create_all_tables_v10(conn: aiosqlite.Connection):
     """
-    一步到位创建最新版本(v9)的数据库表结构
+    一步到位创建最新版本(v10)的数据库表结构
     """
     await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await conn.execute("""
@@ -33,8 +33,8 @@ async def _create_all_tables_v9(conn: aiosqlite.Connection):
     # 关键修改：CREATE TABLE 语句包含了所有新字段
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
-            user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
-            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
+            user_id TEXT PRIMARY KEY, name TEXT NOT NULL, level_index INTEGER NOT NULL, 
+            spiritual_root TEXT NOT NULL, experience INTEGER NOT NULL, gold INTEGER NOT NULL, 
             state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
             hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
             mp INTEGER NOT NULL, max_mp INTEGER NOT NULL, speed INTEGER NOT NULL, aptitude INTEGER NOT NULL,
@@ -86,7 +86,7 @@ class MigrationManager:
                 logger.info("未检测到数据库版本，将进行全新安装...")
                 await self.conn.execute("BEGIN")
                 # 关键修改：确保全新安装时调用的是最新版本的建表函数
-                await _create_all_tables_v9(self.conn)
+                await _create_all_tables_v10(self.conn)
                 await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 await self.conn.commit()
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -310,3 +310,12 @@ async def _upgrade_v8_to_v9(conn: aiosqlite.Connection, config_manager: ConfigMa
             logger.info(f"成功为 'players' 表添加新列: {col}")
             
     logger.info("v8 -> v9 数据库迁移完成！")
+@migration(10)
+async def _upgrade_v9_to_v10(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    logger.info("开始执行 v9 -> v10 数据库迁移...")
+    cursor = await conn.execute("PRAGMA table_info(players)")
+    columns = [row['name'] for row in await cursor.fetchall()]
+    if 'name' not in columns:
+        await conn.execute("ALTER TABLE players ADD COLUMN name TEXT NOT NULL DEFAULT '无名氏'")
+        logger.info("成功为 'players' 表添加新列: name")
+    logger.info("v9 -> v10 数据库迁移完成！")
