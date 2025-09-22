@@ -1,4 +1,5 @@
 # handlers/player_handler.py
+
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
@@ -40,20 +41,44 @@ class PlayerHandler:
 
     @player_required
     async def handle_player_info(self, player: Player, event: AstrMessageEvent):
-        sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
+        # 查找装备名称，如果id存在但找不到物品，则显示未知
+        weapon_name = self.config_manager.item_data.get(player.weapon_id).name if player.weapon_id and self.config_manager.item_data.get(player.weapon_id) else "无"
+        armor_name = self.config_manager.item_data.get(player.armor_id).name if player.armor_id and self.config_manager.item_data.get(player.armor_id) else "无"
+        accessory_name = self.config_manager.item_data.get(player.accessory_id).name if player.accessory_id and self.config_manager.item_data.get(player.accessory_id) else "无"
+        magic_tool_name = self.config_manager.item_data.get(player.magic_tool_id).name if player.magic_tool_id and self.config_manager.item_data.get(player.magic_tool_id) else "无"
+
+        # 获取下一等级所需经验
+        exp_to_next_level = "已达顶峰"
+        if player.level_index < len(self.config_manager.level_data) - 1:
+            next_level_info = self.config_manager.level_data[player.level_index + 1]
+            exp_needed = next_level_info['exp_needed']
+            exp_to_next_level = f"距离下次升级还需 {exp_needed - player.experience} 经验。"
+
+
         reply_msg = (
-            f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
-            f"境界：{player.get_level(self.config_manager)}\n"
+            f"【{event.get_sender_name()}的修行状态】\n"
+            f"境界：{player.get_level(self.config_manager)} ({player.level_index}级)\n"
             f"灵根：{player.spiritual_root}\n"
-            f"修为：{player.experience}\n"
-            f"灵石：{player.gold}\n"
-            f"{sect_info}\n"
-            f"状态：{player.state}\n"
-            "--- 战斗属性 ---\n"
-            f"❤️生命: {player.hp}/{player.max_hp}\n"
-            f"⚔️攻击: {player.attack}\n"
-            f"🛡️防御: {player.defense}\n"
-            f"--------------------------"
+            f"灵石：{player.gold} 枚\n\n"
+            f"【属性面板】\n"
+            f"生命：{player.hp}/{player.max_hp}\n"
+            f"灵力：{player.mp}/{player.max_mp}\n"
+            f"攻击：{player.attack}\n"
+            f"防御：{player.defense}\n"
+            f"速度：{player.speed}\n\n"
+            f"【天赋面板】\n"
+            f"根骨：{player.aptitude}\n"
+            f"悟性：{player.insight}\n"
+            f"气运：{player.luck}\n"
+            f"神识：{player.divine_sense}\n"
+            f"暴击率：{player.crit_rate:.1%}\n"
+            f"暴击伤害：{player.crit_damage:.0%}\n\n"
+            f"【装备信息】\n"
+            f"武器: {weapon_name}\n"
+            f"防具: {armor_name}\n"
+            f"饰品: {accessory_name}\n"
+            f"法宝: {magic_tool_name}\n\n"
+            f"{exp_to_next_level}"
         )
         yield event.plain_result(reply_msg)
 
