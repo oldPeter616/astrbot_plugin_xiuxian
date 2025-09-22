@@ -17,6 +17,7 @@ from .handlers import (
 # --- 指令常量 ---
 CMD_HELP = "修仙帮助"
 CMD_START_XIUXIAN = "我要修仙"
+CMD_CHANGE_NAME = "更改道号"
 CMD_PLAYER_INFO = "我的信息"
 CMD_CHECK_IN = "签到"
 CMD_START_CULTIVATION = "闭关"
@@ -37,7 +38,7 @@ CMD_FIGHT_BOSS = "讨伐boss"
 CMD_ENTER_REALM = "探索秘境"
 CMD_REALM_ADVANCE = "前进"
 CMD_LEAVE_REALM = "离开秘境"
-
+CMD_CHANGE_NAME = "更改道号"
 @register(
     "astrbot_plugin_xiuxian",
     "oldPeter616",
@@ -107,7 +108,10 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_REROLL_SPIRIT_ROOT, "花费灵石，重置灵根")
     async def handle_reroll_spirit_root(self, event: AstrMessageEvent):
         async for r in self.player_handler.handle_reroll_spirit_root(event): yield r
-
+    @filter.command(CMD_CHANGE_NAME, "更改你的道号", alias={'改名'})
+    async def handle_change_name(self, event: AstrMessageEvent, new_name: str):
+        async for r in self.player_handler.handle_change_name(event, new_name): yield r
+            
     # --- shop_handler ---
     @filter.command(CMD_SHOP, "查看坊市商品")
     async def handle_shop(self, event: AstrMessageEvent):
