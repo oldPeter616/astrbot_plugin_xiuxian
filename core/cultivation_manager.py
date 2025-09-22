@@ -44,13 +44,14 @@ class CultivationManager:
         possible_roots = list(self.root_to_config_key.keys())
         return random.choice(possible_roots)
 
-    def generate_new_player_stats(self, user_id: str) -> Player:
+    def generate_new_player_stats(self, user_id: str, name: str) -> Player:
         root = self._get_random_spiritual_root()
         initial_stats = self._calculate_base_stats(0)
-        
+            
         # 返回一个带有所有新属性初始值的 Player 对象
         return Player(
             user_id=user_id,
+            name=name,
             spiritual_root=f"{root}灵根",
             gold=self.config["VALUES"]["INITIAL_GOLD"],
             # 新增天赋属性的随机初始值，让开局更多样化
