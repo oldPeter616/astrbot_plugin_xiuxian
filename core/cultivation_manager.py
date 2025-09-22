@@ -1,7 +1,8 @@
 # core/cultivation_manager.py
-
 import random
+import time 
 from typing import Tuple, Dict
+
 from astrbot.api import AstrBotConfig, logger
 from ..config_manager import ConfigManager
 from ..models import Player
@@ -143,11 +144,10 @@ class CultivationManager:
                    f"所需修为：{exp_needed} (当前拥有 {p_clone.experience})")
             return False, msg, p_clone
 
-        if random.random() < success_rate: # 突破成功
+        if random.random() < success_rate:
             p_clone.level_index = current_level_index + 1
             p_clone.experience -= exp_needed
 
-            # 更新这里，以应用新的属性成长
             new_stats = self._calculate_base_stats(p_clone.level_index)
             p_clone.hp = new_stats['hp']
             p_clone.max_hp = new_stats['max_hp']
@@ -156,6 +156,7 @@ class CultivationManager:
             p_clone.attack = new_stats['attack']
             p_clone.defense = new_stats['defense']
             p_clone.speed = new_stats['speed']
+
 
             msg = (f"恭喜道友！天降祥瑞，突破成功！\n"
                    f"当前境界已达：【{p_clone.get_level(self.config_manager)}】\n"
