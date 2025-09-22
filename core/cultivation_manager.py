@@ -33,7 +33,7 @@ class CultivationManager:
 
     def _get_random_spiritual_root(self) -> str:
         # 从配置的灵根类型中随机选择一个
-        possible_roots = self.config["RULES"].get("POSSIBLE_SPIRITUAL_ROOTS", ["金", "木", "水", "火", "土"])
+        possible_roots = list(self.root_to_config_key.keys())
         return random.choice(possible_roots)
 
     def generate_new_player_stats(self, user_id: str) -> Player:
