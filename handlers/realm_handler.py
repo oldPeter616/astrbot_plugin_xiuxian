@@ -5,7 +5,7 @@ from ..data import DataBase
 from ..core import RealmManager
 from ..config_manager import ConfigManager
 from ..models import Player
-from .utils import player_required
+from .utils import player_required, require_idle_state
 
 CMD_REALM_ADVANCE = "前进"
 
@@ -21,6 +21,7 @@ class RealmHandler:
         self.realm_manager = RealmManager(db, config, config_manager)
 
     @player_required
+    @require_idle_state
     async def handle_enter_realm(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = await self.realm_manager.start_session(player, CMD_REALM_ADVANCE)
         if success and updated_player:
