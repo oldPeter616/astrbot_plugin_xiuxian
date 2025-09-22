@@ -1,5 +1,4 @@
 # handlers/player_handler.py
-
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
@@ -11,6 +10,7 @@ from .utils import player_required
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
 CMD_CHECK_IN = "签到"
+CMD_CHANGE_NAME = "更改道号"
 
 __all__ = ["PlayerHandler"]
 
@@ -28,12 +28,12 @@ class PlayerHandler:
         if await self.db.get_player_by_id(user_id):
             yield event.plain_result("道友，你已踏入仙途，无需重复此举。")
             return
+
         sender_name = event.get_sender_name()
-        # <-- 将 sender_name 传递给 generate_new_player_stats
         new_player = self.cultivation_manager.generate_new_player_stats(user_id, sender_name)
         await self.db.create_player(new_player)
         reply_msg = (
-            f"恭喜道友 {event.get_sender_name()} 踏上仙途！\n"
+            f"恭喜道友 {sender_name} 踏上仙途！\n"
             f"你的初始道号为【{new_player.name}】\n"
             f"初始灵根：【{new_player.spiritual_root}】\n"
             f"启动资金：【{new_player.gold}】灵石\n"
@@ -59,7 +59,7 @@ class PlayerHandler:
 
         reply_msg = (
             f"【{player.name}的修行状态】\n"
-            f"境界：{player.get_level(self.config_manager)} ({player.level_index}级)\n"
+            f"境界：{player.get_level(self.config_manager)}\n"
             f"灵根：{player.spiritual_root}\n"
             f"灵石：{player.gold} 枚\n\n"
             f"【属性面板】\n"
@@ -121,6 +121,7 @@ class PlayerHandler:
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
+        
     @player_required
     async def handle_change_name(self, player: Player, event: AstrMessageEvent, new_name: str):
         if not new_name:
