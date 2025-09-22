@@ -5,6 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
+# 将最新版本号更新为 9
 LATEST_DB_VERSION = 9
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
@@ -16,6 +17,60 @@ def migration(version: int):
         MIGRATION_TASKS[version] = func
         return func
     return decorator
+
+async def _create_all_tables_v9(conn: aiosqlite.Connection):
+    """
+    一步到位创建最新版本(v9)的数据库表结构
+    """
+    await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS sects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+            leader_id TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
+            funds INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    # 关键修改：CREATE TABLE 语句包含了所有新字段
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS players (
+            user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
+            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
+            state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
+            hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
+            mp INTEGER NOT NULL, max_mp INTEGER NOT NULL, speed INTEGER NOT NULL, aptitude INTEGER NOT NULL,
+            insight INTEGER NOT NULL, luck INTEGER NOT NULL, divine_sense INTEGER NOT NULL,
+            crit_rate REAL NOT NULL, crit_damage REAL NOT NULL,
+            weapon_id TEXT, armor_id TEXT, accessory_id TEXT, magic_tool_id TEXT,
+            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, realm_data TEXT,
+            FOREIGN KEY (sect_id) REFERENCES sects (id) ON DELETE SET NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, item_id TEXT NOT NULL,
+            quantity INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE,
+            UNIQUE(user_id, item_id)
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS active_world_bosses (
+            boss_id TEXT PRIMARY KEY,
+            current_hp INTEGER NOT NULL,
+            max_hp INTEGER NOT NULL,
+            spawned_at REAL NOT NULL,
+            level_index INTEGER NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS world_boss_participants (
+            boss_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_name TEXT NOT NULL,
+            total_damage INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (boss_id, user_id),
+            FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE
+        )
+    """)
 
 class MigrationManager:
     """数据库迁移管理器"""
@@ -30,7 +85,8 @@ class MigrationManager:
             if await cursor.fetchone() is None:
                 logger.info("未检测到数据库版本，将进行全新安装...")
                 await self.conn.execute("BEGIN")
-                await _create_all_tables_v8(self.conn)
+                # 关键修改：确保全新安装时调用的是最新版本的建表函数
+                await _create_all_tables_v9(self.conn)
                 await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 await self.conn.commit()
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -69,51 +125,8 @@ class MigrationManager:
         else:
             logger.info("数据库结构已是最新。")
 
-async def _create_all_tables_v8(conn: aiosqlite.Connection):
-    await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS sects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
-            leader_id TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
-            funds INTEGER NOT NULL DEFAULT 0
-        )
-    """)
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
-            experience INTEGER NOT NULL, gold INTEGER NOT NULL, last_check_in REAL NOT NULL,
-            state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
-            hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
-            realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, realm_data TEXT,
-            FOREIGN KEY (sect_id) REFERENCES sects (id) ON DELETE SET NULL
-        )
-    """)
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, item_id TEXT NOT NULL,
-            quantity INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE,
-            UNIQUE(user_id, item_id)
-        )
-    """)
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS active_world_bosses (
-            boss_id TEXT PRIMARY KEY,
-            current_hp INTEGER NOT NULL,
-            max_hp INTEGER NOT NULL,
-            spawned_at REAL NOT NULL,
-            level_index INTEGER NOT NULL
-        )
-    """)
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS world_boss_participants (
-            boss_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            user_name TEXT NOT NULL,
-            total_damage INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (boss_id, user_id),
-            FOREIGN KEY (user_id) REFERENCES players (user_id) ON DELETE CASCADE
-        )
-    """)
+
+# --- 旧的迁移任务，已恢复函数体 ---
 
 @migration(2)
 async def _upgrade_v1_to_v2(conn: aiosqlite.Connection, config_manager: ConfigManager):
@@ -150,12 +163,9 @@ async def _upgrade_v3_to_v4(conn: aiosqlite.Connection, config_manager: ConfigMa
 @migration(5)
 async def _upgrade_v4_to_v5(conn: aiosqlite.Connection, config_manager: ConfigManager):
     logger.info("开始执行 v4 -> v5 数据库迁移...")
-    
-    # --- 新增：在执行任何操作前，检查 'players' 表是否存在 ---
     async with conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='players'") as cursor:
         if await cursor.fetchone() is None:
             logger.warning("在 v4->v5 迁移中未找到 'players' 表，将跳过此迁移步骤。")
-            # 直接创建最新结构的表以防万一
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     user_id TEXT PRIMARY KEY, level_index INTEGER NOT NULL, spiritual_root TEXT NOT NULL,
@@ -168,7 +178,7 @@ async def _upgrade_v4_to_v5(conn: aiosqlite.Connection, config_manager: ConfigMa
                 )
             """)
             return
-    
+
     await conn.execute("ALTER TABLE players RENAME TO players_old_v4")
     await conn.execute("""
         CREATE TABLE players (
@@ -267,13 +277,17 @@ async def _upgrade_v7_to_v8(conn: aiosqlite.Connection, config_manager: ConfigMa
     logger.info("v7 -> v8 数据库迁移完成！")
 
 
+# --- 新增的迁移任务 ---
+
 @migration(9)
 async def _upgrade_v8_to_v9(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """
+    为已有数据库的用户添加新属性列
+    """
     logger.info("开始执行 v8 -> v9 数据库迁移...")
     cursor = await conn.execute("PRAGMA table_info(players)")
     columns = [row['name'] for row in await cursor.fetchall()]
     
-    # 使用字典来定义所有需要添加的列和它们的默认值
     columns_to_add = {
         'mp': "INTEGER NOT NULL DEFAULT 50",
         'max_mp': "INTEGER NOT NULL DEFAULT 50",
