@@ -4,7 +4,7 @@ from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
 from ..config_manager import ConfigManager
 from ..models import Player, PlayerEffect, Item
-from .utils import player_required
+from .utils import player_required, require_idle_state
 
 CMD_BUY = "购买"
 CMD_USE_ITEM = "使用"
@@ -71,6 +71,7 @@ class ShopHandler:
         yield event.plain_result(reply_msg)
 
     @player_required
+    @require_idle_state
     async def handle_buy(self, player: Player, event: AstrMessageEvent, item_name: str, quantity: int):
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{CMD_BUY} <物品名> [数量]`。")
@@ -99,6 +100,7 @@ class ShopHandler:
                 yield event.plain_result("购买失败，坊市交易繁忙，请稍后再试。")
 
     @player_required
+    @require_idle_state
     async def handle_use(self, player: Player, event: AstrMessageEvent, item_name: str, quantity: int):
         if not item_name or quantity <= 0:
             yield event.plain_result(f"指令格式错误。正确用法: `{CMD_USE_ITEM} <物品名> [数量]`。")

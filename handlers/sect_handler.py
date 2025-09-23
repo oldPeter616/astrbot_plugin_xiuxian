@@ -5,7 +5,7 @@ from ..data import DataBase
 from ..core import SectManager
 from ..config_manager import ConfigManager
 from ..models import Player
-from .utils import player_required
+from .utils import player_required, require_idle_state
 
 CMD_CREATE_SECT = "创建宗门"
 CMD_JOIN_SECT = "加入宗门"
@@ -22,6 +22,7 @@ class SectHandler:
         self.sect_manager = SectManager(db, config)
 
     @player_required
+    @require_idle_state
     async def handle_create_sect(self, player: Player, event: AstrMessageEvent, sect_name: str):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_CREATE_SECT} <宗门名称>」。")
@@ -33,6 +34,7 @@ class SectHandler:
         yield event.plain_result(msg)
 
     @player_required
+    @require_idle_state
     async def handle_join_sect(self, player: Player, event: AstrMessageEvent, sect_name: str):
         if not sect_name:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_JOIN_SECT} <宗门名称>」。")
@@ -44,6 +46,7 @@ class SectHandler:
         yield event.plain_result(msg)
 
     @player_required
+    @require_idle_state
     async def handle_leave_sect(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = await self.sect_manager.handle_leave_sect(player)
         if success and updated_player:

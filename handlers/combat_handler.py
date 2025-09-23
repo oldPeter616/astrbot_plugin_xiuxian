@@ -6,7 +6,7 @@ from ..data import DataBase
 from ..core import BattleManager
 from ..config_manager import ConfigManager
 from ..models import Player
-from .utils import player_required
+from .utils import player_required, require_idle_state
 
 CMD_SPAR = "切磋"
 CMD_FIGHT_BOSS = "讨伐boss"
@@ -23,6 +23,7 @@ class CombatHandler:
         self.battle_manager = BattleManager(db, config, config_manager)
 
     @player_required
+    @require_idle_state
     async def handle_spar(self, attacker: Player, event: AstrMessageEvent):
         if attacker.hp < attacker.max_hp:
             yield event.plain_result("你当前气血不满，无法与人切磋，请先恢复。")
@@ -85,6 +86,7 @@ class CombatHandler:
         yield event.plain_result("\n".join(report))
 
     @player_required
+    @require_idle_state
     async def handle_fight_boss(self, player: Player, event: AstrMessageEvent, boss_id: str):
         if not boss_id:
             yield event.plain_result(f"指令格式错误！请使用「{CMD_FIGHT_BOSS} <Boss ID>」。")

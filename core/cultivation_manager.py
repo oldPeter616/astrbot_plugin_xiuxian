@@ -1,6 +1,6 @@
 # core/cultivation_manager.py
 import random
-import time
+import time 
 from typing import Tuple, Dict
 
 from astrbot.api import AstrBotConfig, logger
@@ -25,24 +25,40 @@ class CultivationManager:
             "混沌": "CHAOS_ROOT_SPEED"
         }
 
-    def _calculate_base_stats(self, level_index: int) -> Dict[str, int]:
+    def _calculate_base_stats(self, level_index: int) -> Dict[str, any]:
+        # 更新这里，加入新属性的基础值计算
         base_hp = 100 + level_index * 50
+        base_mp = 50 + level_index * 20 # 灵力成长
         base_attack = 10 + level_index * 8
         base_defense = 5 + level_index * 4
-        return {"hp": base_hp, "max_hp": base_hp, "attack": base_attack, "defense": base_defense}
+        base_speed = 5 + level_index * 1  # 速度成长
+        return {
+            "hp": base_hp, "max_hp": base_hp,
+            "mp": base_mp, "max_mp": base_mp,
+            "attack": base_attack, "defense": base_defense,
+            "speed": base_speed
+        }
 
     def _get_random_spiritual_root(self) -> str:
         # 从配置的灵根类型中随机选择一个
         possible_roots = list(self.root_to_config_key.keys())
         return random.choice(possible_roots)
 
-    def generate_new_player_stats(self, user_id: str) -> Player:
+    def generate_new_player_stats(self, user_id: str, name: str) -> Player:
         root = self._get_random_spiritual_root()
         initial_stats = self._calculate_base_stats(0)
+            
+        # 返回一个带有所有新属性初始值的 Player 对象
         return Player(
             user_id=user_id,
+            name=name,
             spiritual_root=f"{root}灵根",
             gold=self.config["VALUES"]["INITIAL_GOLD"],
+            # 新增天赋属性的随机初始值，让开局更多样化
+            aptitude=random.randint(5, 15),
+            insight=random.randint(5, 15),
+            luck=random.randint(1, 10),
+            divine_sense=random.randint(15, 25),
             **initial_stats
         )
 
@@ -109,6 +125,11 @@ class CultivationManager:
             msg_parts.append(f"闭关吐纳间，气血恢复了 {hp_actually_recovered} 点。")
         
         msg_parts.append(f"当前总修为：{p_clone.experience}")
+        if p_clone.level_index < len(self.config_manager.level_data) - 1:
+            next_level_info = self.config_manager.level_data[p_clone.level_index + 1]
+            exp_needed = next_level_info['exp_needed']
+            if p_clone.experience >= exp_needed:
+                msg_parts.append("\n检测到道友修为已然圆满，可使用「突破」指令尝试冲击下一境界！")
         
         msg = "\n".join(msg_parts)
         return True, msg, p_clone
@@ -136,12 +157,16 @@ class CultivationManager:
             new_stats = self._calculate_base_stats(p_clone.level_index)
             p_clone.hp = new_stats['hp']
             p_clone.max_hp = new_stats['max_hp']
+            p_clone.mp = new_stats['mp']
+            p_clone.max_mp = new_stats['max_mp']
             p_clone.attack = new_stats['attack']
             p_clone.defense = new_stats['defense']
+            p_clone.speed = new_stats['speed']
+
 
             msg = (f"恭喜道友！天降祥瑞，突破成功！\n"
                    f"当前境界已达：【{p_clone.get_level(self.config_manager)}】\n"
-                   f"生命值提升至 {p_clone.max_hp}，攻击提升至 {p_clone.attack}，防御提升至 {p_clone.defense}！\n"
+                   f"生命提升至{p_clone.max_hp}，灵力提升至{p_clone.max_mp}，攻防速全面增长！\n" # 更新提示信息
                    f"剩余修为: {p_clone.experience}")
         else:
             punishment = int(exp_needed * self.config["VALUES"]["BREAKTHROUGH_FAIL_PUNISHMENT_RATIO"])
