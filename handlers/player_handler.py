@@ -5,7 +5,8 @@ from ..data import DataBase
 from ..core import CultivationManager
 from ..models import Player
 from ..config_manager import ConfigManager
-from .utils import player_required, require_idle_state
+from .utils import player_required
+from .utils import player_required, require_idle_state 
 
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
@@ -16,7 +17,7 @@ __all__ = ["PlayerHandler"]
 
 class PlayerHandler:
     # 玩家相关指令处理器
-
+    
     def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
         self.config = config
@@ -50,11 +51,17 @@ class PlayerHandler:
         magic_tool_name = self.config_manager.item_data.get(player.magic_tool_id).name if player.magic_tool_id and self.config_manager.item_data.get(player.magic_tool_id) else "无"
 
         # 获取下一等级所需经验
-        exp_to_next_level = "已达顶峰"
+        exp_to_next_level = "已达顶峰，无法突破。"
         if player.level_index < len(self.config_manager.level_data) - 1:
             next_level_info = self.config_manager.level_data[player.level_index + 1]
             exp_needed = next_level_info['exp_needed']
-            exp_to_next_level = f"距离下次升级还需 {exp_needed - player.experience} 经验。"
+            
+            if player.experience >= exp_needed:
+                success_rate = next_level_info['success_rate']
+                exp_to_next_level = f"修为已足，可随时「突破」！(成功率: {success_rate:.0%})"
+            else:
+                remaining_exp = exp_needed - player.experience
+                exp_to_next_level = f"距离下次升级还需 {remaining_exp} 经验。"
 
 
         reply_msg = (
@@ -85,7 +92,7 @@ class PlayerHandler:
         yield event.plain_result(reply_msg)
 
     @player_required
-    @require_idle_state
+    @require_idle_state 
     async def handle_check_in(self, player: Player, event: AstrMessageEvent):
         success, msg, updated_player = self.cultivation_manager.handle_check_in(player)
         if success and updated_player:
@@ -99,6 +106,7 @@ class PlayerHandler:
         if success and updated_player:
             await self.db.update_player(updated_player)
         yield event.plain_result(msg)
+
 
     @player_required
     async def handle_end_cultivation(self, player: Player, event: AstrMessageEvent):
