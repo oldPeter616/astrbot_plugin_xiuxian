@@ -125,6 +125,11 @@ class CultivationManager:
             msg_parts.append(f"闭关吐纳间，气血恢复了 {hp_actually_recovered} 点。")
         
         msg_parts.append(f"当前总修为：{p_clone.experience}")
+        if p_clone.level_index < len(self.config_manager.level_data) - 1:
+            next_level_info = self.config_manager.level_data[p_clone.level_index + 1]
+            exp_needed = next_level_info['exp_needed']
+            if p_clone.experience >= exp_needed:
+                msg_parts.append("\n检测到道友修为已然圆满，可使用「突破」指令尝试冲击下一境界！")
         
         msg = "\n".join(msg_parts)
         return True, msg, p_clone
