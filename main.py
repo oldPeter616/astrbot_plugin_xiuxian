@@ -34,7 +34,7 @@ CMD_LEAVE_REALM = "离开秘境"
 @register(
     "astrbot_plugin_xiuxian",
     "oldPeter616",
-    "基 于 astrbot框 架 的 文 字 修 仙 游 戏 ",
+    "基于astrbot框架的文字修仙游戏",
     "v2.0.2",
     "https://github.com/oldPeter616/astrbot_plugin_xiuxian"
 )
@@ -62,135 +62,198 @@ class XiuXianPlugin(Star):
         logger.info("【修仙插件】XiuXianPlugin __init__ 方法成功执行完毕。")
 
     def _check_access(self, event: AstrMessageEvent) -> bool:
+        """检查访问权限，支持群聊白名单控制
+        
+        返回值:
+        - True: 允许访问
+        - False: 拒绝访问
+        """
+        # 如果没有配置白名单，允许所有访问
         if not self.whitelist_groups:
             return True
         
+        # 获取群组ID，私聊时为None
         group_id = event.get_group_id()
+        
+        # 如果是私聊，允许访问（私聊通常应该被允许）
         if not group_id:
-            return False
+            return True
             
+        # 检查群组是否在白名单中
         if str(group_id) in self.whitelist_groups:
             return True
         
         return False
+    
+    async def _send_access_denied_message(self, event: AstrMessageEvent):
+        """发送访问被拒绝的提示消息"""
+        try:
+            await event.send("抱歉，此群聊未在修仙插件的白名单中，无法使用相关功能。")
+        except:
+            # 如果发送失败，静默处理
+            pass
 
     async def initialize(self):
         await self.db.connect()
         migration_manager = MigrationManager(self.db.conn, self.config_manager)
         await migration_manager.migrate()
-        logger.info("修 仙 插 件 已 加 载 。 ")
+        logger.info("修仙插件已加载。")
 
     async def terminate(self):
         await self.db.close()
-        logger.info("修 仙 插 件 已 卸 载 。 ")
+        logger.info("修仙插件已卸载。")
 
     
-    @filter.command(CMD_HELP, "显 示 帮 助 信 息 ")
+    @filter.command(CMD_HELP, "显示帮助信息")
     async def handle_help(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.misc_handler.handle_help(event): yield r
         
-    @filter.command(CMD_START_XIUXIAN, "开 始 你 的 修 仙 之 路 ")
+    @filter.command(CMD_START_XIUXIAN, "开始你的修仙之路")
     async def handle_start_xiuxian(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_start_xiuxian(event): yield r
         
-    @filter.command(CMD_PLAYER_INFO, "查 看 你 的 角 色 信 息 ")
+    @filter.command(CMD_PLAYER_INFO, "查看你的角色信息")
     async def handle_player_info(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_player_info(event): yield r
         
-    @filter.command(CMD_CHECK_IN, "每 日 签 到 领 取 奖 励 ")
+    @filter.command(CMD_CHECK_IN, "每日签到领取奖励")
     async def handle_check_in(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_check_in(event): yield r
         
-    @filter.command(CMD_START_CULTIVATION, "开 始 闭 关 修 炼 ")
+    @filter.command(CMD_START_CULTIVATION, "开始闭关修炼")
     async def handle_start_cultivation(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_start_cultivation(event): yield r
         
-    @filter.command(CMD_END_CULTIVATION, "结 束 闭 关 修 炼 ")
+    @filter.command(CMD_END_CULTIVATION, "结束闭关修炼")
     async def handle_end_cultivation(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_end_cultivation(event): yield r
         
-    @filter.command(CMD_BREAKTHROUGH, "尝 试 突 破 当 前 境 界 ")
+    @filter.command(CMD_BREAKTHROUGH, "尝试突破当前境界")
     async def handle_breakthrough(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_breakthrough(event): yield r
         
-    @filter.command(CMD_REROLL_SPIRIT_ROOT, "花 费 灵 石 ， 重 置 灵 根 ")
+    @filter.command(CMD_REROLL_SPIRIT_ROOT, "花费灵石，重置灵根")
     async def handle_reroll_spirit_root(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.player_handler.handle_reroll_spirit_root(event): yield r
         
-    @filter.command(CMD_SHOP, "查 看 坊 市 商 品 ")
+    @filter.command(CMD_SHOP, "查看坊市商品")
     async def handle_shop(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.shop_handler.handle_shop(event): yield r
         
-    @filter.command(CMD_BACKPACK, "查 看 你 的 背 包 ")
+    @filter.command(CMD_BACKPACK, "查看你的背包")
     async def handle_backpack(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.shop_handler.handle_backpack(event): yield r
         
-    @filter.command(CMD_BUY, "购 买 物 品 ")
+    @filter.command(CMD_BUY, "购买物品")
     async def handle_buy(self, event: AstrMessageEvent, item_name: str, quantity: int = 1):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.shop_handler.handle_buy(event, item_name, quantity): yield r
         
-    @filter.command(CMD_USE_ITEM, "使 用 背 包 中 的 物 品 ")
+    @filter.command(CMD_USE_ITEM, "使用背包中的物品")
     async def handle_use(self, event: AstrMessageEvent, item_name: str, quantity: int = 1):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.shop_handler.handle_use(event, item_name, quantity): yield r
         
-    @filter.command(CMD_CREATE_SECT, "创 建 你 的 宗 门 ")
+    @filter.command(CMD_CREATE_SECT, "创建你的宗门")
     async def handle_create_sect(self, event: AstrMessageEvent, sect_name: str):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.sect_handler.handle_create_sect(event, sect_name): yield r
         
-    @filter.command(CMD_JOIN_SECT, "加 入 一 个 宗 门 ")
+    @filter.command(CMD_JOIN_SECT, "加入一个宗门")
     async def handle_join_sect(self, event: AstrMessageEvent, sect_name: str):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.sect_handler.handle_join_sect(event, sect_name): yield r
         
-    @filter.command(CMD_LEAVE_SECT, "退 出 当 前 宗 门 ")
+    @filter.command(CMD_LEAVE_SECT, "退出当前宗门")
     async def handle_leave_sect(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.sect_handler.handle_leave_sect(event): yield r
         
-    @filter.command(CMD_MY_SECT, "查 看 我 的 宗 门 信 息 ")
+    @filter.command(CMD_MY_SECT, "查看我的宗门信息")
     async def handle_my_sect(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.sect_handler.handle_my_sect(event): yield r
         
-    @filter.command(CMD_SPAR, "与 其 他 玩 家 切 磋 ")
+    @filter.command(CMD_SPAR, "与其他玩家切磋")
     async def handle_spar(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.combat_handler.handle_spar(event): yield r
         
-    @filter.command(CMD_BOSS_LIST, "查 看 当 前 所 有 世 界 Boss")
+    @filter.command(CMD_BOSS_LIST, "查看当前所有世界Boss")
     async def handle_boss_list(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.combat_handler.handle_boss_list(event): yield r
         
-    @filter.command(CMD_FIGHT_BOSS, "讨 伐 指 定 ID的 世 界 Boss")
+    @filter.command(CMD_FIGHT_BOSS, "讨伐指定ID的世界Boss")
     async def handle_fight_boss(self, event: AstrMessageEvent, boss_id: str):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.combat_handler.handle_fight_boss(event, boss_id): yield r
         
-    @filter.command(CMD_ENTER_REALM, "根 据 当 前 境 界 ， 探 索 一 个 随 机 秘 境 ")
+    @filter.command(CMD_ENTER_REALM, "根据当前境界，探索一个随机秘境")
     async def handle_enter_realm(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.realm_handler.handle_enter_realm(event): yield r
         
-    @filter.command(CMD_REALM_ADVANCE, "在 秘 境 中 前 进 ")
+    @filter.command(CMD_REALM_ADVANCE, "在秘境中前进")
     async def handle_realm_advance(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.realm_handler.handle_realm_advance(event): yield r
         
-    @filter.command(CMD_LEAVE_REALM, "离 开 当 前 秘 境 ")
+    @filter.command(CMD_LEAVE_REALM, "离开当前秘境")
     async def handle_leave_realm(self, event: AstrMessageEvent):
-        if not self._check_access(event): return
+        if not self._check_access(event): 
+            await self._send_access_denied_message(event)
+            return
         async for r in self.realm_handler.handle_leave_realm(event): yield r
