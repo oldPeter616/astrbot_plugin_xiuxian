@@ -1,8 +1,20 @@
 {
+  "ACCESS_CONTROL": {
+    "description": "访问控制",
+    "type": "object",
+    "items": {
+      "WHITELIST_GROUPS": {
+        "description": "白名单群号列表",
+        "type": "list",
+        "default": [],
+        "hint": "请添加允许使用此插件的QQ群号。留空则表示所有群聊都可用。"
+      }
+    }
+  },
   "notice": {
     "description": "欢迎语",
     "type": "string",
-    "default": "开始你的修仙之途吧！",
+    "default": "开始你的修仙之路吧！",
     "hint": "插件加载时显示的欢迎信息。"
   },
   "VALUES": {
@@ -31,7 +43,7 @@
         "description": "每分钟闭关修为",
         "type": "int",
         "default": 10,
-        "hint": "玩家在“闭关”状态下，每分钟获得的基础修为值。"
+        "hint": "玩家在 “闭关” 状态下，每分钟获得的基础修为值。"
       },
       "CULTIVATION_HP_RECOVERY_RATIO": {
         "description": "闭关回血比例",
@@ -43,7 +55,7 @@
         "description": "重置灵根花费",
         "type": "int",
         "default": 10000,
-        "hint": "执行“重入仙途”指令，重新随机灵根需要消耗的灵石数量。"
+        "hint": "执行\"重入仙途\"指令，重新随机灵根需要消耗的灵石数量。"
       },
       "BREAKTHROUGH_FAIL_PUNISHMENT_RATIO": {
         "description": "突破失败惩罚率",
