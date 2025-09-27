@@ -42,7 +42,7 @@ CMD_LEAVE_REALM = "离开秘境"
     "astrbot_plugin_xiuxian",
     "oldPeter616",
     "基于astrbot框架的文字修仙游戏",
-    "v2.0.2",
+    "v2.0.3",
     "https://github.com/oldPeter616/astrbot_plugin_xiuxian"
 )
 class XiuXianPlugin(Star):
