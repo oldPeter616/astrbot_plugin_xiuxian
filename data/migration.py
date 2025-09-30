@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 8
+LATEST_DB_VERSION = 9 # 版本号提升
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -30,7 +30,8 @@ class MigrationManager:
             if await cursor.fetchone() is None:
                 logger.info("未检测到数据库版本，将进行全新安装...")
                 await self.conn.execute("BEGIN")
-                await _create_all_tables_v8(self.conn)
+                # 使用最新的建表函数
+                await _create_all_tables_v9(self.conn)
                 await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 await self.conn.commit()
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
@@ -69,7 +70,7 @@ class MigrationManager:
         else:
             logger.info("数据库结构已是最新。")
 
-async def _create_all_tables_v8(conn: aiosqlite.Connection):
+async def _create_all_tables_v9(conn: aiosqlite.Connection):
     await conn.execute("CREATE TABLE IF NOT EXISTS db_info (version INTEGER NOT NULL)")
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS sects (
@@ -85,6 +86,7 @@ async def _create_all_tables_v8(conn: aiosqlite.Connection):
             state TEXT NOT NULL, state_start_time REAL NOT NULL, sect_id INTEGER, sect_name TEXT,
             hp INTEGER NOT NULL, max_hp INTEGER NOT NULL, attack INTEGER NOT NULL, defense INTEGER NOT NULL,
             realm_id TEXT, realm_floor INTEGER NOT NULL DEFAULT 0, realm_data TEXT,
+            equipped_weapon TEXT, equipped_armor TEXT, equipped_accessory TEXT,
             FOREIGN KEY (sect_id) REFERENCES sects (id) ON DELETE SET NULL
         )
     """)
@@ -265,3 +267,17 @@ async def _upgrade_v7_to_v8(conn: aiosqlite.Connection, config_manager: ConfigMa
         )
     """)
     logger.info("v7 -> v8 数据库迁移完成！")
+
+@migration(9)
+async def _upgrade_v8_to_v9(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """为 players 表添加装备列"""
+    logger.info("开始执行 v8 -> v9 数据库迁移...")
+    async with conn.execute("PRAGMA table_info(players)") as cursor:
+        columns = [row['name'] for row in await cursor.fetchall()]
+        if 'equipped_weapon' not in columns:
+            await conn.execute("ALTER TABLE players ADD COLUMN equipped_weapon TEXT")
+        if 'equipped_armor' not in columns:
+            await conn.execute("ALTER TABLE players ADD COLUMN equipped_armor TEXT")
+        if 'equipped_accessory' not in columns:
+            await conn.execute("ALTER TABLE players ADD COLUMN equipped_accessory TEXT")
+    logger.info("v8 -> v9 数据库迁移完成！")

@@ -81,7 +81,7 @@ class MonsterGenerator:
         return instance
 
     @classmethod
-    def create_boss(cls, template_id: str, player_level_index: int, config_manager: ConfigManager) -> Optional[Boss]:
+    def create_boss(cls, template_id: str, player_level_index: int, config_manager: ConfigManager, scaling_factor: float = 1.0) -> Optional[Boss]:
         template = config_manager.boss_data.get(template_id)
         if not template:
             logger.warning(f"尝试创建Boss失败：找不到模板ID {template_id}")
@@ -112,6 +112,11 @@ class MonsterGenerator:
             final_exp *= tag_effect.get("exp_multiplier", 1.0)
             if "add_to_loot" in tag_effect:
                 combined_loot_table.extend(tag_effect["add_to_loot"])
+        
+        # 应用强度系数
+        final_hp *= scaling_factor
+        final_attack *= scaling_factor
+        final_defense *= scaling_factor
 
         final_hp = int(final_hp)
         instance = Boss(
@@ -183,6 +188,7 @@ class BattleManager:
             return "错误：无法加载Boss战斗数据！"
 
         p_clone = player.clone()
+        p_stats = p_clone.get_combat_stats(self.config_manager) # 获取最终战斗属性
         boss_hp = active_boss_instance.current_hp
 
         total_damage_dealt = 0
@@ -192,7 +198,7 @@ class BattleManager:
 
         while p_clone.hp > 1 and boss_hp > 0 and turn < max_turns:
             turn += 1
-            damage_to_boss = max(1, p_clone.attack - boss.defense)
+            damage_to_boss = max(1, p_stats['attack'] - boss.defense)
             damage_to_boss = min(damage_to_boss, boss_hp)
             boss_hp -= damage_to_boss
             total_damage_dealt += damage_to_boss
@@ -200,7 +206,7 @@ class BattleManager:
             if boss_hp <= 0:
                 break
 
-            damage_to_player = max(1, boss.attack - p_clone.defense)
+            damage_to_player = max(1, boss.attack - p_stats['defense'])
             p_clone.hp -= damage_to_player
             total_damage_taken += damage_to_player
 
@@ -256,6 +262,7 @@ class BattleManager:
 
     def player_vs_monster(self, player: Player, monster) -> Tuple[bool, List[str], Player]:
         p_clone = player.clone()
+        p_stats = p_clone.get_combat_stats(self.config_manager) # 获取最终战斗属性
         monster_hp = monster.hp
 
         total_damage_dealt = 0
@@ -264,14 +271,14 @@ class BattleManager:
 
         while p_clone.hp > 1 and monster_hp > 0:
             turn += 1
-            damage_to_monster = max(1, p_clone.attack - monster.defense)
+            damage_to_monster = max(1, p_stats['attack'] - monster.defense)
             monster_hp -= damage_to_monster
             total_damage_dealt += damage_to_monster
 
             if monster_hp <= 0:
                 break
 
-            damage_to_player = max(1, monster.attack - p_clone.defense)
+            damage_to_player = max(1, monster.attack - p_stats['defense'])
             p_clone.hp -= damage_to_player
             total_damage_taken += damage_to_player
 
@@ -295,6 +302,9 @@ class BattleManager:
     def player_vs_player(self, attacker: Player, defender: Player, attacker_name: Optional[str], defender_name: Optional[str]) -> Tuple[Optional[Player], Optional[Player], List[str]]:
         p1 = attacker.clone()
         p2 = defender.clone()
+        
+        p1_stats = p1.get_combat_stats(self.config_manager)
+        p2_stats = p2.get_combat_stats(self.config_manager)
 
         p1_display = attacker_name or attacker.user_id[-4:]
         p2_display = defender_name or defender.user_id[-4:]
@@ -306,14 +316,14 @@ class BattleManager:
 
         while p1.hp > 1 and p2.hp > 1 and turn < max_turns:
             turn += 1
-            damage_to_p2 = max(1, p1.attack - p2.defense)
+            damage_to_p2 = max(1, p1_stats['attack'] - p2_stats['defense'])
             p2.hp -= damage_to_p2
             p1_damage_dealt += damage_to_p2
             if p2.hp <= 1:
                 p2.hp = 1
                 break
 
-            damage_to_p1 = max(1, p2.attack - p1.defense)
+            damage_to_p1 = max(1, p2_stats['attack'] - p1_stats['defense'])
             p1.hp -= damage_to_p1
             p2_damage_dealt += damage_to_p1
             if p1.hp <= 1:

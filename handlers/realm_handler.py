@@ -64,4 +64,4 @@ class RealmHandler:
 
         await self.db.update_player(player)
 
-        yield event.plain_result(f"你已从【{realm_name}】中脱离，回到了大千世界。中途退出不会获得任何奖励。")
+        yield event.plain_result(f"你已从【{realm_name}】中脱离，回到了大千世界。")

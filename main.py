@@ -5,9 +5,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from .data import DataBase, MigrationManager
 from .config_manager import ConfigManager
 from .handlers import (
-    MiscHandler, PlayerHandler, ShopHandler, SectHandler, CombatHandler, RealmHandler
+    MiscHandler, PlayerHandler, ShopHandler, SectHandler, CombatHandler, RealmHandler,
+    EquipmentHandler
 )
 
+# 指令定义
 CMD_HELP = "修仙帮助"
 CMD_START_XIUXIAN = "我要修仙"
 CMD_PLAYER_INFO = "我的信息"
@@ -31,11 +33,15 @@ CMD_ENTER_REALM = "探索秘境"
 CMD_REALM_ADVANCE = "前进"
 CMD_LEAVE_REALM = "离开秘境"
 
+# 装备相关指令
+CMD_UNEQUIP = "卸下"
+CMD_MY_EQUIPMENT = "我的装备"
+
 @register(
     "astrbot_plugin_xiuxian",
     "oldPeter616",
     "基于astrbot框架的文字修仙游戏",
-    "v2.0.3",
+    "v2.1.0", # 版本号提升
     "https://github.com/oldPeter616/astrbot_plugin_xiuxian"
 )
 class XiuXianPlugin(Star):
@@ -51,10 +57,11 @@ class XiuXianPlugin(Star):
 
         self.misc_handler = MiscHandler(self.db)
         self.player_handler = PlayerHandler(self.db, self.config, self.config_manager)
-        self.shop_handler = ShopHandler(self.db, self.config_manager)
+        self.shop_handler = ShopHandler(self.db, self.config_manager, self.config) # 传入config
         self.sect_handler = SectHandler(self.db, self.config, self.config_manager)
         self.combat_handler = CombatHandler(self.db, self.config, self.config_manager)
         self.realm_handler = RealmHandler(self.db, self.config, self.config_manager)
+        self.equipment_handler = EquipmentHandler(self.db, self.config_manager)
 
         access_control_config = self.config.get("ACCESS_CONTROL", {})
         self.whitelist_groups = [str(g) for g in access_control_config.get("WHITELIST_GROUPS", [])]
@@ -102,8 +109,7 @@ class XiuXianPlugin(Star):
     async def terminate(self):
         await self.db.close()
         logger.info("修仙插件已卸载。")
-
-    
+        
     @filter.command(CMD_HELP, "显示帮助信息")
     async def handle_help(self, event: AstrMessageEvent):
         if not self._check_access(event): 
@@ -257,3 +263,18 @@ class XiuXianPlugin(Star):
             await self._send_access_denied_message(event)
             return
         async for r in self.realm_handler.handle_leave_realm(event): yield r
+
+    # --- 装备指令 ---
+    @filter.command(CMD_UNEQUIP, "卸下一件装备")
+    async def handle_unequip(self, event: AstrMessageEvent, subtype_name: str):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.equipment_handler.handle_unequip(event, subtype_name): yield r
+
+    @filter.command(CMD_MY_EQUIPMENT, "查看当前装备")
+    async def handle_my_equipment(self, event: AstrMessageEvent):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.equipment_handler.handle_my_equipment(event): yield r

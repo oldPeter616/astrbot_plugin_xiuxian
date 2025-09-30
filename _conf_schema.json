@@ -11,12 +11,6 @@
       }
     }
   },
-  "notice": {
-    "description": "欢迎语",
-    "type": "string",
-    "default": "开始你的修仙之路吧！",
-    "hint": "插件加载时显示的欢迎信息。"
-  },
   "VALUES": {
     "description": "核心数值配置",
     "type": "object",
@@ -74,6 +68,12 @@
         "type": "int",
         "default": 5,
         "hint": "生成世界Boss时，参考服务器战力排名前N的玩家的平均等级。"
+      },
+      "SHOP_DAILY_ITEM_COUNT": {
+        "description": "每日商店商品数量",
+        "type": "int",
+        "default": 8,
+        "hint": "每日坊市随机上架的商品种类数量。"
       }
     }
   },
@@ -97,6 +97,12 @@
         "type": "float",
         "default": 0.7,
         "hint": "在秘境中遇到怪物事件的概率（0.0到1.0之间）。"
+      },
+      "REALM_BOSS_SCALING_FACTOR": {
+        "description": "秘境Boss强度系数",
+        "type": "float",
+        "default": 0.7,
+        "hint": "秘境最终Boss的强度缩放系数（例如0.7代表70%强度）。"
       }
     }
   },

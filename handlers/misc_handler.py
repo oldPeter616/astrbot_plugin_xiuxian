@@ -23,6 +23,8 @@ CMD_FIGHT_BOSS="讨伐boss"
 CMD_ENTER_REALM="探索秘境"
 CMD_REALM_ADVANCE="前进"
 CMD_LEAVE_REALM="离开秘境"
+CMD_MY_EQUIPMENT="我的装备"
+CMD_UNEQUIP="卸下"
 
 __all__ = ["MiscHandler"]
 
@@ -44,10 +46,12 @@ class MiscHandler:
             f"【{CMD_BREAKTHROUGH}】: 尝试突破境界。\n"
             f"【{CMD_REROLL_SPIRIT_ROOT}】: 逆天改命，重置灵根。\n"
             "--- 坊市与物品 ---\n"
-            f"【{CMD_SHOP}】: 查看坊市商品。\n"
+            f"【{CMD_SHOP}】: 查看坊市当日商品。\n"
             f"【{CMD_BACKPACK}】: 查看个人背包。\n"
             f"【{CMD_BUY} <名> [数]】: 购买物品。\n"
-            f"【{CMD_USE_ITEM} <名> [数]】: 使用物品。\n"
+            f"【{CMD_USE_ITEM} <名> [数]】: 使用丹药或穿戴法器。\n"
+            f"【{CMD_MY_EQUIPMENT}】: 查看已穿戴的装备。\n"
+            f"【{CMD_UNEQUIP} <部位>】: 卸下指定部位法器 (武器/防具/饰品)。\n"
             "--- 宗门社交 ---\n"
             f"【{CMD_CREATE_SECT} <名>】: 创建宗门。\n"
             f"【{CMD_JOIN_SECT} <名>】: 加入宗门。\n"

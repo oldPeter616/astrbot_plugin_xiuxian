@@ -177,72 +177,116 @@
     "3001": {
         "name": "青锋剑",
         "type": "法器",
+        "subtype": "武器",
         "rank": "凡品",
         "description": "由精铁打造的利剑，是修士入门的常用法器。",
-        "price": 800
+        "price": 800,
+        "equip_effects": {
+            "attack": 8
+        }
     },
     "3002": {
         "name": "玄铁甲",
         "type": "法器",
+        "subtype": "防具",
         "rank": "凡品",
         "description": "由玄铁编织的内甲，能提供基础的防护。",
-        "price": 800
+        "price": 800,
+        "equip_effects": {
+            "defense": 10
+        }
     },
     "3003": {
         "name": "烈阳刀",
         "type": "法器",
+        "subtype": "武器",
         "rank": "珍品",
         "description": "刀身赤红，挥舞间似有烈阳之威。",
-        "price": 4000
+        "price": 4000,
+        "equip_effects": {
+            "attack": 25
+        }
     },
     "3004": {
         "name": "月华袍",
         "type": "法器",
+        "subtype": "防具",
         "rank": "珍品",
         "description": "以月光精华织成，轻盈且防御力不俗。",
-        "price": 4000
+        "price": 4000,
+        "equip_effects": {
+            "defense": 22,
+            "max_hp": 50
+        }
     },
     "3005": {
         "name": "弑神枪",
         "type": "法器",
+        "subtype": "武器",
         "rank": "帝品",
         "description": "传说中的禁忌法器，枪出如龙，有弑神之威。",
-        "price": 9999999
+        "price": 9999999,
+        "equip_effects": {
+            "attack": 500
+        }
     },
     "3006": {
         "name": "镇魂幡",
         "type": "法器",
+        "subtype": "饰品",
         "rank": "圣品",
         "description": "以幽魂草和千年玄铁炼制，对鬼魅有天然的克制之力。",
-        "price": 500000
+        "price": 500000,
+        "equip_effects": {
+            "attack": 100,
+            "defense": 50
+        }
     },
     "3007": {
         "name": "寒霜剑",
         "type": "法器",
+        "subtype": "武器",
         "rank": "圣品",
         "description": "剑身由玄冰之核打造，挥舞时可冰封百里。",
-        "price": 600000
+        "price": 600000,
+        "equip_effects": {
+            "attack": 250
+        }
     },
     "3008": {
         "name": "泰坦之铠",
         "type": "法器",
+        "subtype": "防具",
         "rank": "圣品",
         "description": "以上古机关术打造的重甲，坚不可摧。",
-        "price": 750000
+        "price": 750000,
+        "equip_effects": {
+            "defense": 300,
+            "max_hp": 200
+        }
     },
     "3009": {
         "name": "妖精之弓",
         "type": "法器",
+        "subtype": "武器",
         "rank": "圣品",
         "description": "以月光粉尘和神木打造，箭矢能追踪敌人。",
-        "price": 550000
+        "price": 550000,
+        "equip_effects": {
+            "attack": 220
+        }
     },
     "3010": {
         "name": "戮仙剑阵",
         "type": "法器",
+        "subtype": "饰品",
         "rank": "帝品",
         "description": "四把神剑组成的无上剑阵，非天道圣人不可挡。",
-        "price": 8888888
+        "price": 8888888,
+        "equip_effects": {
+            "attack": 800,
+            "defense": 200
+        }
     },
     "4001": {
         "name": "长春功残篇",

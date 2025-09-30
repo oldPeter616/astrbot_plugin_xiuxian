@@ -18,6 +18,8 @@ class Item:
     description: str
     price: int
     effect: Optional[Dict[str, Any]] = None
+    subtype: Optional[str] = None  # 装备子类型，如'武器', '防具'
+    equip_effects: Optional[Dict[str, Any]] = None  # 装备属性加成
 
 @dataclass
 class FloorEvent:
@@ -55,11 +57,36 @@ class Player:
     realm_id: Optional[str] = None
     realm_floor: int = 0
     realm_data: Optional[str] = None
+    
+    # 装备槽位
+    equipped_weapon: Optional[str] = None
+    equipped_armor: Optional[str] = None
+    equipped_accessory: Optional[str] = None
 
     def get_level(self, config_manager: "ConfigManager") -> str:
         if 0 <= self.level_index < len(config_manager.level_data):
             return config_manager.level_data[self.level_index]["level_name"]
         return "未知境界"
+
+    def get_combat_stats(self, config_manager: "ConfigManager") -> Dict[str, Any]:
+        """计算并返回玩家的最终战斗属性（基础属性+装备加成）"""
+        stats = {
+            "hp": self.hp,
+            "max_hp": self.max_hp,
+            "attack": self.attack,
+            "defense": self.defense,
+        }
+        
+        equipment_ids = [self.equipped_weapon, self.equipped_armor, self.equipped_accessory]
+        
+        for item_id in equipment_ids:
+            if item_id:
+                item = config_manager.item_data.get(str(item_id))
+                if item and item.equip_effects:
+                    for key, value in item.equip_effects.items():
+                        if key in stats:
+                            stats[key] += value
+        return stats
 
     def get_realm_instance(self) -> Optional[RealmInstance]:
         if not self.realm_data:

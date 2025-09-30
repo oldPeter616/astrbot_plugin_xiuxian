@@ -131,8 +131,11 @@ class RealmManager:
     async def _handle_monster_event(self, p: Player, event: FloorEvent, player_level_index: int) -> Tuple[bool, List[str], Player, Dict[str, int]]:
         monster_template_id = event.data["id"]
         
-        enemy_generator = MonsterGenerator.create_boss if event.type == "boss" else MonsterGenerator.create_monster
-        enemy = enemy_generator(monster_template_id, player_level_index, self.config_manager)
+        if event.type == "boss":
+            scaling_factor = self.config["REALM_RULES"].get("REALM_BOSS_SCALING_FACTOR", 1.0)
+            enemy = MonsterGenerator.create_boss(monster_template_id, player_level_index, self.config_manager, scaling_factor=scaling_factor)
+        else:
+            enemy = MonsterGenerator.create_monster(monster_template_id, player_level_index, self.config_manager)
 
         if not enemy:
             return False, ["怪物生成失败！"], p, {}

@@ -41,6 +41,21 @@ class PlayerHandler:
     @player_required
     async def handle_player_info(self, player: Player, event: AstrMessageEvent):
         sect_info = f"宗门：{player.sect_name if player.sect_name else '逍遥散人'}"
+        combat_stats = player.get_combat_stats(self.config_manager)
+
+        # 构建装备显示部分
+        equipped_items_lines = []
+        slot_map = {"武器": player.equipped_weapon, "防具": player.equipped_armor, "饰品": player.equipped_accessory}
+        for slot, item_id in slot_map.items():
+            item_name = "(无)"
+            if item_id:
+                item_data = self.config_manager.item_data.get(str(item_id))
+                if item_data:
+                    item_name = f"「{item_data.name}」"
+            equipped_items_lines.append(f"  {slot}: {item_name}")
+
+        equipped_info = "\n".join(equipped_items_lines)
+
         reply_msg = (
             f"--- 道友 {event.get_sender_name()} 的信息 ---\n"
             f"境界：{player.get_level(self.config_manager)}\n"
@@ -49,10 +64,12 @@ class PlayerHandler:
             f"灵石：{player.gold}\n"
             f"{sect_info}\n"
             f"状态：{player.state}\n"
-            "--- 战斗属性 ---\n"
-            f"❤️生命: {player.hp}/{player.max_hp}\n"
-            f"⚔️攻击: {player.attack}\n"
-            f"🛡️防御: {player.defense}\n"
+            "--- 战斗属性 (含装备加成) ---\n"
+            f"❤️生命: {combat_stats['hp']}/{combat_stats['max_hp']}\n"
+            f"⚔️攻击: {combat_stats['attack']}\n"
+            f"🛡️防御: {combat_stats['defense']}\n"
+            "--- 穿戴装备 ---\n"
+            f"{equipped_info}\n"
             f"--------------------------"
         )
         yield event.plain_result(reply_msg)
@@ -80,9 +97,7 @@ class PlayerHandler:
 
     @player_required
     async def handle_breakthrough(self, player: Player, event: AstrMessageEvent):
-        if player.state != "空闲":
-            yield event.plain_result(f"道友当前正在「{player.state}」中，无法尝试突破。")
-            return
+        # 内部已经包含了状态检查，但为了统一，装饰器的检查是第一道防线
         success, msg, updated_player = self.cultivation_manager.handle_breakthrough(player)
         if success and updated_player:
             await self.db.update_player(updated_player)
